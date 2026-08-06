@@ -1,0 +1,28 @@
+/* ==========================================
+   MY DAILY TRACKER - MAIN STYLESHEET
+   ========================================== */
+
+@import url('./css/theme.css');
+@import url('./css/components.css');
+@import url('./css/layout.css');
+
+/* Global Reset & Base */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Accessibility Focus Visible */
+*:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+}
