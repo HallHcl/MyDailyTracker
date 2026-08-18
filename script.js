@@ -1085,6 +1085,14 @@ const APPS_SCRIPT_CODE = `function doGet(e) {
         var lastRow = sheet.getLastRow();
         styleRow(sheet, lastRow, type);
         sheet.autoResizeColumns(1, 7);
+        
+        // Auto-Sort by Date (Col 1) and Time (Col 2)
+        if (lastRow > 2) {
+          sheet.getRange(2, 1, lastRow - 1, 7).sort([
+            { column: 1, ascending: true },
+            { column: 2, ascending: true }
+          ]);
+        }
       }
       return ContentService.createTextOutput("SUCCESS");
     } 
