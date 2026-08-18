@@ -77,7 +77,7 @@
 1. **Auto Create Monthly Sheet Tabs:** เมื่อขึ้นเดือนใหม่ ระบบจะสร้างแท็บ New Sheet ด้านล่างให้อัตโนมัติ (เช่น แท็บ `กรกฎาคม 2026`, `สิงหาคม 2026`)
 2. **Deduplication (ป้องกันแถวซ้ำ):** ระบบจะสแกนตรวจสอบข้อมูลก่อนเขียนลงตาราง หากรายการซ้ำจะข้ามให้อัตโนมัติ
 3. **Auto Column Resizing:** ขยายความกว้างช่อง Description ตามความยาวข้อความให้อัตโนมัติ
-4. **Clearing & Clean Formatting on Sync All:** เมื่อกด **Sync All Data Now** สคริปต์จะล้างบรรทัดว่างเก่าทิ้ง และเรียงรายการตั้งแต่แถวที่ 1 ถึง N ใหม่ทันที
+5. **Two-Way Sync & Import (ดึงข้อมูลกลับเข้าเว็บ):** รองรับ `action=get_all` เพื่อดึงข้อมูลทุก Sheet กลับมาแสดงผลบนเว็บเบราว์เซอร์อัตโนมัติ พร้อมระบบ JSONP และ Direct Paste สำรอง
 
 ### 📜 โค้ดฉบับสมบูรณ์สำหรับ Google Apps Script:
 
@@ -90,6 +90,7 @@ function doGet(e) {
       return ContentService.createTextOutput("Tracker API Ready!");
     }
     
+    // 1. ADD SINGLE TRANSACTION
     if (e.parameter.action === "add") {
       var timestamp = e.parameter.timestamp;
       var sheet = getMonthlySheet(ss, timestamp);
@@ -111,13 +112,18 @@ function doGet(e) {
       }
       return ContentService.createTextOutput("SUCCESS");
     } 
-    else if (e.parameter.action === "sync_all" && e.parameter.payload) {
-      var txList = JSON.parse(e.parameter.payload);
+    // 2. SYNC ALL / CHUNK
+    else if (e.parameter.action === "sync_chunk" || e.parameter.action === "sync_all") {
+      var isFirst = e.parameter.is_first === "1";
+      var txList = [];
+      if (e.parameter.payload) {
+        txList = JSON.parse(e.parameter.payload);
+      }
       
       var txByMonth = {};
       txList.forEach(function(tx) {
         if (!tx.isDummy) {
-          var d = new Date(tx.timestamp);
+          var d = new Date(tx.timestamp || Date.now());
           var months = [
             "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
             "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
@@ -134,14 +140,16 @@ function doGet(e) {
           sheet = ss.insertSheet(sheetName);
         }
         
-        sheet.clear();
-        sheet.appendRow(["Date", "Time", "Type", "Amount", "Currency", "Description", "Balance"]);
-        var headerRange = sheet.getRange(1, 1, 1, 7);
-        headerRange.setBackground("#0F9D58")
-                   .setFontColor("#FFFFFF")
-                   .setFontWeight("bold")
-                   .setHorizontalAlignment("center");
-        sheet.setRowHeight(1, 35);
+        if (isFirst) {
+          sheet.clear();
+          sheet.appendRow(["Date", "Time", "Type", "Amount", "Currency", "Description", "Balance"]);
+          var headerRange = sheet.getRange(1, 1, 1, 7);
+          headerRange.setBackground("#0F9D58")
+                     .setFontColor("#FFFFFF")
+                     .setFontWeight("bold")
+                     .setHorizontalAlignment("center");
+          sheet.setRowHeight(1, 35);
+        }
         
         var list = txByMonth[sheetName];
         list.forEach(function(tx) {
@@ -158,12 +166,70 @@ function doGet(e) {
         sheet.autoResizeColumns(1, 7);
       }
       
-      return ContentService.createTextOutput("SUCCESS SYNC ALL");
+      return ContentService.createTextOutput("SUCCESS SYNC");
+    }
+    // 3. GET ALL TRANSACTIONS (IMPORT TO WEB APP)
+    else if (e.parameter.action === "get_all") {
+      var sheets = ss.getSheets();
+      var allTransactions = [];
+      
+      sheets.forEach(function(sheet) {
+        var lastRow = sheet.getLastRow();
+        if (lastRow > 1) {
+          var values = sheet.getRange(2, 1, lastRow - 1, 7).getValues();
+          for (var i = 0; i < values.length; i++) {
+            var row = values[i];
+            var dateVal = row[0];
+            var timeVal = row[1];
+            var typeVal = row[2];
+            var amountVal = row[3];
+            var currVal = row[4];
+            var tagVal = row[5];
+            
+            if (dateVal && amountVal !== "" && !isNaN(Number(amountVal))) {
+              var formattedDate = "";
+              if (dateVal instanceof Date) {
+                var y = dateVal.getFullYear();
+                var m = String(dateVal.getMonth() + 1).padStart(2, '0');
+                var day = String(dateVal.getDate()).padStart(2, '0');
+                formattedDate = y + "-" + m + "-" + day;
+              } else {
+                formattedDate = String(dateVal).trim();
+              }
+              
+              allTransactions.push({
+                date: formattedDate,
+                time: String(timeVal || ""),
+                type: String(typeVal || "income").toLowerCase(),
+                amount: Number(amountVal),
+                currency: String(currVal || "THB").toUpperCase(),
+                tag: String(tagVal || "")
+              });
+            }
+          }
+        }
+      });
+      
+      var responseObj = {
+        status: "success",
+        count: allTransactions.length,
+        transactions: allTransactions
+      };
+      
+      var callback = e.parameter.callback;
+      if (callback) {
+        return ContentService.createTextOutput(callback + "(" + JSON.stringify(responseObj) + ")")
+          .setMimeType(ContentService.MimeType.JAVASCRIPT);
+      } else {
+        return ContentService.createTextOutput(JSON.stringify(responseObj))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
     }
     
     return ContentService.createTextOutput("Tracker API Ready!");
   } catch (err) {
-    return ContentService.createTextOutput("ERROR: " + err.toString());
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
   }
 }
 

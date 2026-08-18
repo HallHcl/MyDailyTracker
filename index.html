@@ -361,20 +361,68 @@
     </div>
   </div>
 
-  <!-- Google Sheets Sync Modal -->
+  <!-- Google Sheets Sync & Data Import Modal -->
   <div id="sheets-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
-    <div class="modal-card">
+    <div class="modal-card modal-lg">
       <div class="modal-header">
-        <h3>Google Sheets Sync</h3>
-        <p>Paste your Apps Script Web App URL to enable automatic sync.</p>
+        <h3>☁️ Google Sheets Sync & Import</h3>
+        <p>เชื่อมต่อ นำเข้า (Import) และซิงค์ข้อมูลกับ Google Sheets</p>
       </div>
-      <div class="modal-body" style="display: flex; flex-direction: column; gap: 12px;">
-        <input type="text" id="sheets-url-input" class="input-field" placeholder="https://script.google.com/macros/s/.../exec">
-        <button id="sync-all-btn" class="btn-secondary">⚡ Sync All Data Now</button>
+
+      <!-- Modal Tabs -->
+      <div class="modal-nav-tabs">
+        <button id="modal-tab-cloud" class="modal-tab-btn active" type="button">☁️ Cloud Sync / Import</button>
+        <button id="modal-tab-paste" class="modal-tab-btn" type="button">📋 Direct Paste (วางข้อมูล)</button>
+        <button id="modal-tab-code" class="modal-tab-btn" type="button">📜 โค้ด Apps Script</button>
       </div>
+
+      <!-- Tab 1: Cloud Sync & Auto Import -->
+      <div id="tab-content-cloud" class="modal-body" style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label style="font-size: var(--font-xs); color: var(--text-secondary); font-weight: 600; margin-bottom: 6px; display: block;">
+            Web App URL (จาก Apps Script):
+          </label>
+          <input type="text" id="sheets-url-input" class="input-field" placeholder="https://script.google.com/macros/s/.../exec">
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <button id="import-sheets-btn" class="btn-import" type="button">
+            <span>📥 Import จาก Sheets</span>
+          </button>
+          <button id="sync-all-btn" class="btn-sync" type="button">
+            <span>⚡ Sync ข้อมูลไป Sheets</span>
+          </button>
+        </div>
+
+        <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: var(--radius-sm); padding: 10px 12px; font-size: var(--font-xs); color: var(--text-secondary); line-height: 1.5;">
+          💡 <strong>ข้อแนะนำสำหรับการย้ายเครื่อง/ลง Windows ใหม่:</strong><br>
+          เพียงแค่นำ Web App URL เดิมมาวาง แล้วกดปุ่ม <strong>📥 Import จาก Sheets</strong> ข้อมูลทั้งหมดที่เคยบันทึกไว้ใน Google Sheets จะถูกโหลดกลับเข้ามาในเครื่องนี้ทันที!
+        </div>
+      </div>
+
+      <!-- Tab 2: Direct Paste (Manual Copy-Paste from Sheets) -->
+      <div id="tab-content-paste" class="modal-body hidden" style="display: flex; flex-direction: column; gap: 12px;">
+        <label style="font-size: var(--font-xs); color: var(--text-secondary); line-height: 1.4;">
+          คัดลอกตารางจาก Google Sheets (ทุกคอลัมน์ A ถึง G) แล้วนำมา <strong>Ctrl + V วางในช่องด้านล่างนี้</strong>:
+        </label>
+        <textarea id="paste-import-input" class="input-field" style="height: 120px; font-family: monospace; font-size: 11px; resize: vertical;" placeholder="วางตารางที่คัดลอกจาก Google Sheets ที่นี่..."></textarea>
+        <button id="paste-import-btn" class="btn-import" type="button" style="width: 100%;">
+          <span>📥 นำเข้าข้อมูลจากตารางที่วาง</span>
+        </button>
+      </div>
+
+      <!-- Tab 3: Google Apps Script Source Code -->
+      <div id="tab-content-code" class="modal-body hidden" style="display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: var(--font-xs); color: var(--text-secondary);">โค้ด Google Apps Script (รองรับทั้ง Sync และ Import):</span>
+          <button id="copy-script-code-btn" class="btn-secondary btn-copy-code" type="button">📋 Copy Code</button>
+        </div>
+        <div id="script-code-snippet" class="code-snippet-box"></div>
+      </div>
+
       <div class="modal-actions">
-        <button id="cancel-sheets-btn" class="btn-secondary">Cancel</button>
-        <button id="save-sheets-btn" class="btn-primary income">Save URL</button>
+        <button id="cancel-sheets-btn" class="btn-secondary" type="button">Close</button>
+        <button id="save-sheets-btn" class="btn-primary income" type="button">Save URL</button>
       </div>
     </div>
   </div>

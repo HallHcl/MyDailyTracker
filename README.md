@@ -9,7 +9,8 @@
 - **Google Sheets Dark UI**: อินเทอร์เฟซมืดสวยงาม ใช้งานง่าย คุ้นเคย รวดเร็ว
 - **Multi-Currency Management**: บริหารจัดการหลายสกุลเงินพร้อมกัน (`THB`, `WIP`, ฯลฯ) แยกยอดเงินคงเหลือสะสมอย่างเด็ดขาด
 - **Multi-Select & Bulk Delete**: เลือกหลายรายการพร้อมกัน และยืนยันการลบอย่างปลอดภัยด้วยการพิมพ์ `delete`
-- **Google Sheets Cloud Sync**: ซิงค์ข้อมูลเข้า Google Sheets แบบ Real-Time ผ่าน Google Apps Script Web App Endpoint
+- **Google Sheets Two-Way Cloud Sync**: ซิงค์ข้อมูลเข้า Google Sheets แบบ Real-Time และกด **📥 Import Data** ดึงประวัติทั้งหมดกลับเข้าเว็บได้ในคลิกเดียว
+- **Direct Paste Import**: รองรับการ Copy ตารางจาก Google Sheets มาวาง (Ctrl+V) เพื่อนำเข้าข้อมูลได้ทันที
 - **Offline PWA Support**: ทำงานได้เต็มรูปแบบแม้ไม่มีอินเทอร์เน็ต และรองรับการติดตั้งลงบนสมาร์ตโฟนและเดสก์ท็อป
 
 ---

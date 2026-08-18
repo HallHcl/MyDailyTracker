@@ -110,9 +110,22 @@ const sheetsUrlInput = document.getElementById('sheets-url-input');
 const sheetsStatusDot = document.getElementById('sheets-status-dot');
 const cloudStatus = document.getElementById('cloud-status');
 const syncAllBtn = document.getElementById('sync-all-btn');
+const importSheetsBtn = document.getElementById('import-sheets-btn');
 const cancelSheetsBtn = document.getElementById('cancel-sheets-btn');
 const saveSheetsBtn = document.getElementById('save-sheets-btn');
 const clearDataBtn = document.getElementById('clear-data-btn');
+
+// Modal Elements - Sheets Modal Tabs & Direct Paste
+const modalTabCloud = document.getElementById('modal-tab-cloud');
+const modalTabPaste = document.getElementById('modal-tab-paste');
+const modalTabCode = document.getElementById('modal-tab-code');
+const tabContentCloud = document.getElementById('tab-content-cloud');
+const tabContentPaste = document.getElementById('tab-content-paste');
+const tabContentCode = document.getElementById('tab-content-code');
+const pasteImportInput = document.getElementById('paste-import-input');
+const pasteImportBtn = document.getElementById('paste-import-btn');
+const copyScriptCodeBtn = document.getElementById('copy-script-code-btn');
+const scriptCodeSnippet = document.getElementById('script-code-snippet');
 
 // Initialization
 function init() {
@@ -1097,10 +1110,232 @@ function saveBalances() {
   showToast("อัปเดตเงินตั้งต้นในบัญชีเรียบร้อยแล้ว", "success");
 }
 
-// Modal Logic for Google Sheets
+// Google Apps Script Source Code Template
+const APPS_SCRIPT_CODE = `function doGet(e) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!e || !e.parameter) {
+      return ContentService.createTextOutput("Tracker API Ready!");
+    }
+    
+    // 1. ADD SINGLE TRANSACTION
+    if (e.parameter.action === "add") {
+      var timestamp = e.parameter.timestamp;
+      var sheet = getMonthlySheet(ss, timestamp);
+      var amount = Number(e.parameter.amount);
+      var currency = e.parameter.currency;
+      var type = e.parameter.type;
+      var tag = e.parameter.tag || "";
+      var date = e.parameter.date;
+      var balance = e.parameter.balance ? Number(e.parameter.balance) : "";
+      var d = new Date(Number(timestamp) || Date.now());
+      var timeStr = d.toLocaleTimeString();
+      
+      if (!isDuplicateRow(sheet, date, timeStr, type, amount, currency, tag)) {
+        sheet.appendRow([date, timeStr, type, amount, currency, tag, balance]);
+        var lastRow = sheet.getLastRow();
+        styleRow(sheet, lastRow, type);
+        sheet.autoResizeColumns(1, 7);
+      }
+      return ContentService.createTextOutput("SUCCESS");
+    } 
+    
+    // 2. SYNC ALL / CHUNK
+    else if (e.parameter.action === "sync_chunk" || e.parameter.action === "sync_all") {
+      var isFirst = e.parameter.is_first === "1";
+      var txList = [];
+      if (e.parameter.payload) {
+        txList = JSON.parse(e.parameter.payload);
+      }
+      
+      var txByMonth = {};
+      txList.forEach(function(tx) {
+        if (!tx.isDummy) {
+          var d = new Date(tx.timestamp || Date.now());
+          var months = [
+            "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+            "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
+          ];
+          var sheetName = months[d.getMonth()] + " " + d.getFullYear();
+          if (!txByMonth[sheetName]) txByMonth[sheetName] = [];
+          txByMonth[sheetName].push(tx);
+        }
+      });
+      
+      for (var sheetName in txByMonth) {
+        var sheet = ss.getSheetByName(sheetName);
+        if (!sheet) {
+          sheet = ss.insertSheet(sheetName);
+        }
+        
+        if (isFirst) {
+          sheet.clear();
+          sheet.appendRow(["Date", "Time", "Type", "Amount", "Currency", "Description", "Balance"]);
+          var headerRange = sheet.getRange(1, 1, 1, 7);
+          headerRange.setBackground("#0F9D58")
+                     .setFontColor("#FFFFFF")
+                     .setFontWeight("bold")
+                     .setHorizontalAlignment("center");
+          sheet.setRowHeight(1, 35);
+        }
+        
+        var list = txByMonth[sheetName];
+        list.forEach(function(tx) {
+          var d = new Date(tx.timestamp);
+          var timeStr = d.toLocaleTimeString();
+          var amount = Number(tx.amount);
+          var tag = tx.tag || "";
+          var balance = tx.runningBalance !== undefined ? Number(tx.runningBalance) : "";
+          
+          sheet.appendRow([tx.date, timeStr, tx.type, amount, tx.currency, tag, balance]);
+          var r = sheet.getLastRow();
+          styleRow(sheet, r, tx.type);
+        });
+        sheet.autoResizeColumns(1, 7);
+      }
+      return ContentService.createTextOutput("SUCCESS SYNC");
+    }
+    
+    // 3. GET ALL (IMPORT TO WEB APP)
+    else if (e.parameter.action === "get_all") {
+      var sheets = ss.getSheets();
+      var allTransactions = [];
+      
+      sheets.forEach(function(sheet) {
+        var lastRow = sheet.getLastRow();
+        if (lastRow > 1) {
+          var values = sheet.getRange(2, 1, lastRow - 1, 7).getValues();
+          for (var i = 0; i < values.length; i++) {
+            var row = values[i];
+            var dateVal = row[0];
+            var timeVal = row[1];
+            var typeVal = row[2];
+            var amountVal = row[3];
+            var currVal = row[4];
+            var tagVal = row[5];
+            
+            if (dateVal && amountVal !== "" && !isNaN(Number(amountVal))) {
+              var formattedDate = "";
+              if (dateVal instanceof Date) {
+                var y = dateVal.getFullYear();
+                var m = String(dateVal.getMonth() + 1).padStart(2, '0');
+                var day = String(dateVal.getDate()).padStart(2, '0');
+                formattedDate = y + "-" + m + "-" + day;
+              } else {
+                formattedDate = String(dateVal).trim();
+              }
+              
+              allTransactions.push({
+                date: formattedDate,
+                time: String(timeVal || ""),
+                type: String(typeVal || "income").toLowerCase(),
+                amount: Number(amountVal),
+                currency: String(currVal || "THB").toUpperCase(),
+                tag: String(tagVal || "")
+              });
+            }
+          }
+        }
+      });
+      
+      var responseObj = {
+        status: "success",
+        count: allTransactions.length,
+        transactions: allTransactions
+      };
+      
+      var callback = e.parameter.callback;
+      if (callback) {
+        return ContentService.createTextOutput(callback + "(" + JSON.stringify(responseObj) + ")")
+          .setMimeType(ContentService.MimeType.JAVASCRIPT);
+      } else {
+        return ContentService.createTextOutput(JSON.stringify(responseObj))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+    
+    return ContentService.createTextOutput("Tracker API Ready!");
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function isDuplicateRow(sheet, date, timeStr, type, amount, currency, tag) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return false;
+  var data = sheet.getRange(2, 1, lastRow - 1, 7).getValues();
+  for (var i = 0; i < data.length; i++) {
+    var r = data[i];
+    if (r[0] && String(r[0]) === String(date) && 
+        String(r[1]) === String(timeStr) && 
+        String(r[2]).toLowerCase() === String(type).toLowerCase() && 
+        Number(r[3]) === Number(amount) && 
+        String(r[4]) === String(currency) && 
+        String(r[5]) === String(tag)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function getMonthlySheet(ss, timestamp) {
+  var d = new Date(Number(timestamp) || Date.now());
+  var months = [
+    "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+    "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
+  ];
+  var sheetName = months[d.getMonth()] + " " + d.getFullYear();
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+    sheet.appendRow(["Date", "Time", "Type", "Amount", "Currency", "Description", "Balance"]);
+    var headerRange = sheet.getRange(1, 1, 1, 7);
+    headerRange.setBackground("#0F9D58")
+               .setFontColor("#FFFFFF")
+               .setFontWeight("bold")
+               .setHorizontalAlignment("center");
+    sheet.setRowHeight(1, 35);
+  }
+  return sheet;
+}
+
+function styleRow(sheet, rowIdx, type) {
+  var rowRange = sheet.getRange(rowIdx, 1, 1, 7);
+  rowRange.setFontColor("#E0E0E0");
+  rowRange.setBackground(rowIdx % 2 === 0 ? "#1E1F24" : "#17181C");
+  sheet.getRange(rowIdx, 1, 1, 7).setHorizontalAlignment("center");
+  sheet.getRange(rowIdx, 6).setHorizontalAlignment("left");
+  
+  var typeCell = sheet.getRange(rowIdx, 3);
+  var amtCell = sheet.getRange(rowIdx, 4);
+  if (type === "income") {
+    typeCell.setFontColor("#10B981").setFontWeight("bold");
+    amtCell.setFontColor("#10B981").setFontWeight("bold");
+  } else {
+    typeCell.setFontColor("#EF4444").setFontWeight("bold");
+    amtCell.setFontColor("#EF4444").setFontWeight("bold");
+  }
+}`;
+
+// Modal Logic for Google Sheets & Tab Switching
 function openSheetsModal() {
   sheetsModal.classList.remove('hidden');
   sheetsUrlInput.value = googleSheetUrl;
+  switchSheetsModalTab('cloud');
+  if (scriptCodeSnippet) {
+    scriptCodeSnippet.textContent = APPS_SCRIPT_CODE;
+  }
+}
+
+function switchSheetsModalTab(tabName) {
+  if (modalTabCloud) modalTabCloud.classList.toggle('active', tabName === 'cloud');
+  if (modalTabPaste) modalTabPaste.classList.toggle('active', tabName === 'paste');
+  if (modalTabCode) modalTabCode.classList.toggle('active', tabName === 'code');
+
+  if (tabContentCloud) tabContentCloud.classList.toggle('hidden', tabName !== 'cloud');
+  if (tabContentPaste) tabContentPaste.classList.toggle('hidden', tabName !== 'paste');
+  if (tabContentCode) tabContentCode.classList.toggle('hidden', tabName !== 'code');
 }
 
 function saveSheetsUrl() {
@@ -1117,6 +1352,238 @@ function saveSheetsUrl() {
   sheetsModal.classList.add('hidden');
   if (googleSheetUrl) {
     showToast("บันทึก Web App URL เรียบร้อยแล้ว", "success");
+  }
+}
+
+// 📥 Import Data from Google Sheets
+function importFromGoogleSheets() {
+  const urlToUse = sheetsUrlInput.value.trim() || googleSheetUrl;
+  if (!urlToUse || !urlToUse.includes("script.google.com")) {
+    showToast("กรุณากรอก Web App URL จาก Apps Script ให้ถูกต้องก่อนกด Import ครับ", "error");
+    return;
+  }
+
+  // Save URL if valid
+  googleSheetUrl = urlToUse;
+  saveData();
+
+  // Set Loading UI
+  if (importSheetsBtn) {
+    importSheetsBtn.disabled = true;
+    importSheetsBtn.innerHTML = `<span class="spinner"></span> กำลัง Import...`;
+  }
+
+  const handleImportedData = (rawList) => {
+    if (!Array.isArray(rawList) || rawList.length === 0) {
+      showToast("ไม่พบรายการข้อมูลใน Google Sheets ครับ", "info");
+      return;
+    }
+
+    let addedCount = 0;
+    const existingKeys = new Set(
+      transactions.filter(t => !t.isDummy).map(t => `${t.date}_${t.type}_${Number(t.amount)}_${t.currency}_${t.tag || ''}`)
+    );
+
+    rawList.forEach((item, index) => {
+      const amt = Number(item.amount);
+      if (isNaN(amt) || amt <= 0) return;
+      const type = (item.type || 'income').toLowerCase();
+      const curr = (item.currency || 'THB').toUpperCase();
+      const tag = item.tag || item.description || '';
+      const dateStr = item.date || getTodayDateString();
+
+      // Deduplication check
+      const key = `${dateStr}_${type}_${amt}_${curr}_${tag}`;
+      if (!existingKeys.has(key)) {
+        existingKeys.add(key);
+
+        let parsedTimestamp = Date.now() - (rawList.length - index) * 1000;
+        if (item.time) {
+          const tryDate = new Date(`${dateStr} ${item.time}`);
+          if (!isNaN(tryDate.getTime())) parsedTimestamp = tryDate.getTime();
+        } else {
+          const tryDate = new Date(dateStr);
+          if (!isNaN(tryDate.getTime())) parsedTimestamp = tryDate.getTime() + (index * 60000);
+        }
+
+        transactions.push({
+          id: generateId(),
+          date: dateStr,
+          timestamp: parsedTimestamp,
+          type: type,
+          currency: curr,
+          tag: tag,
+          amount: amt
+        });
+
+        // Ensure currency exists in initialBalances
+        if (initialBalances[curr] === undefined) {
+          initialBalances[curr] = 0;
+        }
+
+        addedCount++;
+      }
+    });
+
+    // Mark as seeded to prevent mock overwrite
+    localStorage.setItem('tracker_isSeeded', 'true');
+    saveData();
+    updateUI();
+
+    showToast(`นำเข้าข้อมูล ${addedCount} รายการจาก Google Sheets สำเร็จ!`, "success");
+    sheetsModal.classList.add('hidden');
+  };
+
+  // Attempt JSONP Callback first (100% reliable cross-origin for Google Apps Script)
+  const callbackName = 'gscript_import_cb_' + Date.now();
+  let completed = false;
+
+  window[callbackName] = (data) => {
+    completed = true;
+    if (importSheetsBtn) {
+      importSheetsBtn.disabled = false;
+      importSheetsBtn.innerHTML = `<span>📥 Import จาก Sheets</span>`;
+    }
+    delete window[callbackName];
+    if (scriptElem && scriptElem.parentNode) {
+      scriptElem.parentNode.removeChild(scriptElem);
+    }
+
+    if (data && data.status === 'success' && data.transactions) {
+      handleImportedData(data.transactions);
+    } else {
+      showToast("นำเข้าไม่สำเร็จ หรือยังไม่ได้อัปเดตโค้ด Apps Script ใหม่", "error");
+    }
+  };
+
+  const scriptElem = document.createElement('script');
+  scriptElem.src = `${urlToUse}${urlToUse.includes('?') ? '&' : '?'}action=get_all&callback=${callbackName}&_t=${Date.now()}`;
+  scriptElem.onerror = () => {
+    if (!completed) {
+      completed = true;
+      delete window[callbackName];
+      if (scriptElem && scriptElem.parentNode) {
+        scriptElem.parentNode.removeChild(scriptElem);
+      }
+
+      // Fallback to fetch
+      fetch(`${urlToUse}${urlToUse.includes('?') ? '&' : '?'}action=get_all&_t=${Date.now()}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.status === 'success' && data.transactions) {
+            handleImportedData(data.transactions);
+          } else {
+            showToast("ไม่สามารถดึงข้อมูลได้ โปรดตรวจสอบการอัปเดตโค้ด Apps Script ครับ", "error");
+          }
+        })
+        .catch(err => {
+          console.error("Import error:", err);
+          showToast("ไม่สามารถเชื่อมต่อ Apps Script ได้ กรุณาลองวิธี Direct Paste แทนครับ", "error");
+        })
+        .finally(() => {
+          if (importSheetsBtn) {
+            importSheetsBtn.disabled = false;
+            importSheetsBtn.innerHTML = `<span>📥 Import จาก Sheets</span>`;
+          }
+        });
+    }
+  };
+
+  document.body.appendChild(scriptElem);
+
+  // Timeout guard (12 seconds)
+  setTimeout(() => {
+    if (!completed) {
+      completed = true;
+      if (window[callbackName]) delete window[callbackName];
+      if (scriptElem && scriptElem.parentNode) scriptElem.parentNode.removeChild(scriptElem);
+      if (importSheetsBtn) {
+        importSheetsBtn.disabled = false;
+        importSheetsBtn.innerHTML = `<span>📥 Import จาก Sheets</span>`;
+      }
+      showToast("การเชื่อมต่อหมดเวลา โปรดตรวจสอบว่า Apps Script เผยแพร่เป็น 'Anyone' แล้วหรือไม่", "error");
+    }
+  }, 12000);
+}
+
+// 📋 Import from Direct Paste (TSV / CSV / Text from Sheets)
+function importFromPastedText() {
+  if (!pasteImportInput) return;
+  const rawText = pasteImportInput.value.trim();
+  if (!rawText) {
+    showToast("กรุณาวางตารางหรือข้อความที่คัดลอกจาก Google Sheets ก่อนครับ", "error");
+    return;
+  }
+
+  const lines = rawText.split(/\r?\n/);
+  let addedCount = 0;
+  const existingKeys = new Set(
+    transactions.filter(t => !t.isDummy).map(t => `${t.date}_${t.type}_${Number(t.amount)}_${t.currency}_${t.tag || ''}`)
+  );
+
+  lines.forEach((line, index) => {
+    if (!line.trim()) return;
+
+    // Detect delimiter (\t from copy-pasting tables or comma)
+    const cols = line.includes('\t') ? line.split('\t') : line.split(',');
+    if (cols.length < 4) return;
+
+    // Skip header row
+    const firstCol = cols[0].trim().toLowerCase();
+    if (firstCol.includes('date') || firstCol.includes('วันที่') || firstCol.includes('time')) return;
+
+    const dateStr = cols[0].trim();
+    const timeStr = cols[1] ? cols[1].trim() : '';
+    let typeStr = cols[2] ? cols[2].trim().toLowerCase() : 'income';
+    if (typeStr.includes('exp') || typeStr.includes('จ่าย') || typeStr.includes('เสีย')) typeStr = 'expense';
+    else typeStr = 'income';
+
+    let rawAmount = cols[3] ? cols[3].replace(/[^0-9.-]+/g, '') : '';
+    const amt = parseFloat(rawAmount);
+    if (isNaN(amt) || amt <= 0) return;
+
+    const curr = (cols[4] ? cols[4].trim().toUpperCase() : 'THB') || 'THB';
+    const tag = cols[5] ? cols[5].trim() : '';
+
+    const key = `${dateStr}_${typeStr}_${amt}_${curr}_${tag}`;
+    if (!existingKeys.has(key)) {
+      existingKeys.add(key);
+
+      let parsedTimestamp = Date.now() - (lines.length - index) * 1000;
+      if (timeStr) {
+        const tryDate = new Date(`${dateStr} ${timeStr}`);
+        if (!isNaN(tryDate.getTime())) parsedTimestamp = tryDate.getTime();
+      } else {
+        const tryDate = new Date(dateStr);
+        if (!isNaN(tryDate.getTime())) parsedTimestamp = tryDate.getTime() + (index * 60000);
+      }
+
+      transactions.push({
+        id: generateId(),
+        date: dateStr,
+        timestamp: parsedTimestamp,
+        type: typeStr,
+        currency: curr,
+        tag: tag,
+        amount: amt
+      });
+
+      if (initialBalances[curr] === undefined) {
+        initialBalances[curr] = 0;
+      }
+      addedCount++;
+    }
+  });
+
+  if (addedCount > 0) {
+    localStorage.setItem('tracker_isSeeded', 'true');
+    saveData();
+    updateUI();
+    pasteImportInput.value = '';
+    sheetsModal.classList.add('hidden');
+    showToast(`นำเข้าข้อมูลสำเร็จ ${addedCount} รายการ!`, "success");
+  } else {
+    showToast("ไม่พบรายการที่สามารถนำเข้าได้ หรือรายการทั้งหมดมีอยู่แล้ว", "info");
   }
 }
 
@@ -1426,6 +1893,29 @@ function setupEventListeners() {
   cancelSheetsBtn.addEventListener('click', () => sheetsModal.classList.add('hidden'));
   saveSheetsBtn.addEventListener('click', saveSheetsUrl);
   
+  if (importSheetsBtn) {
+    importSheetsBtn.addEventListener('click', importFromGoogleSheets);
+  }
+
+  if (modalTabCloud) modalTabCloud.addEventListener('click', () => switchSheetsModalTab('cloud'));
+  if (modalTabPaste) modalTabPaste.addEventListener('click', () => switchSheetsModalTab('paste'));
+  if (modalTabCode) modalTabCode.addEventListener('click', () => switchSheetsModalTab('code'));
+
+  if (pasteImportBtn) {
+    pasteImportBtn.addEventListener('click', importFromPastedText);
+  }
+
+  if (copyScriptCodeBtn) {
+    copyScriptCodeBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(APPS_SCRIPT_CODE).then(() => {
+        showToast("คัดลอกโค้ด Apps Script ลง Clipboard แล้ว", "info");
+      }).catch(err => {
+        console.error('Could not copy code:', err);
+        showToast("ไม่สามารถคัดลอกโค้ดได้", "error");
+      });
+    });
+  }
+  
   syncAllBtn.addEventListener('click', () => {
     if (!googleSheetUrl || !googleSheetUrl.includes("script.google.com")) {
       showToast("กรุณาก๊อปปี้ Web App URL จาก Apps Script มาวางก่อนครับ", "error");
@@ -1443,7 +1933,7 @@ function setupEventListeners() {
     setTimeout(() => {
       syncAllBtn.disabled = false;
       syncAllBtn.classList.remove('is-loading');
-      syncAllBtn.innerHTML = `⚡ Sync All Data Now`;
+      syncAllBtn.innerHTML = `⚡ Sync ข้อมูลไป Sheets`;
       sheetsModal.classList.add('hidden');
     }, 1500);
   });
