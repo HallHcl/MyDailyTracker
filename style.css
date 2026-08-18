@@ -21,8 +21,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Accessibility Focus Visible */
-*:focus-visible {
-  outline: 2px solid var(--brand-primary);
-  outline-offset: 2px;
+/* Global Utility Classes */
+.hidden {
+  display: none !important;
 }

@@ -675,6 +675,10 @@
   pointer-events: none;
 }
 
+.modal-body.hidden {
+  display: none !important;
+}
+
 .modal-card {
   background: var(--panel-bg);
   border: 1px solid var(--border-color-strong);
