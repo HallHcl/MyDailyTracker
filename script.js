@@ -1097,12 +1097,13 @@ const APPS_SCRIPT_CODE = `function doGet(e) {
         styleRow(sheet, lastRow, type);
         sheet.autoResizeColumns(1, 7);
         
-        // ✨ Auto-Sort: จัดเรียงตามวันที่ (Col 1) และเวลา (Col 2) อัตโนมัติ
+        // ✨ Auto-Sort & Restyle ทุกแถวให้ เขียว/แดง 100%
         if (lastRow > 2) {
           sheet.getRange(2, 1, lastRow - 1, 7).sort([
             { column: 1, ascending: true },
             { column: 2, ascending: true }
           ]);
+          restyleAllRows(sheet);
         }
       }
       return ContentService.createTextOutput("SUCCESS");
@@ -1167,6 +1168,7 @@ const APPS_SCRIPT_CODE = `function doGet(e) {
             { column: 1, ascending: true },
             { column: 2, ascending: true }
           ]);
+          restyleAllRows(sheet);
         }
         sheet.autoResizeColumns(1, 7);
       }
@@ -1234,6 +1236,17 @@ const APPS_SCRIPT_CODE = `function doGet(e) {
     return ContentService.createTextOutput("Tracker API Ready!");
   } catch (err) {
     return ContentService.createTextOutput("ERROR: " + err.toString());
+  }
+}
+
+function restyleAllRows(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return;
+  var types = sheet.getRange(2, 3, lastRow - 1, 1).getValues();
+  for (var i = 0; i < types.length; i++) {
+    var r = i + 2;
+    var type = String(types[i][0]).toLowerCase();
+    styleRow(sheet, r, type);
   }
 }
 
