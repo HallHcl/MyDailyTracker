@@ -1070,14 +1070,18 @@ function saveBalances() {
 const APPS_SCRIPT_CODE = `function doGet(e) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    
     if (!e || !e.parameter) {
       return ContentService.createTextOutput("Tracker API Ready!");
     }
     
-    // 1. ADD SINGLE TRANSACTION
-    if (e.parameter.action === "add") {
+    var action = e.parameter.action;
+    
+    // 1. ADD SINGLE TRANSACTION (พร้อม Auto-Sort เรียงวันที่)
+    if (action === "add") {
       var timestamp = e.parameter.timestamp;
       var sheet = getMonthlySheet(ss, timestamp);
+      
       var amount = Number(e.parameter.amount);
       var currency = e.parameter.currency;
       var type = e.parameter.type;
@@ -1093,7 +1097,7 @@ const APPS_SCRIPT_CODE = `function doGet(e) {
         styleRow(sheet, lastRow, type);
         sheet.autoResizeColumns(1, 7);
         
-        // Auto-Sort by Date (Col 1) and Time (Col 2)
+        // ✨ Auto-Sort: จัดเรียงตามวันที่ (Col 1) และเวลา (Col 2) อัตโนมัติ
         if (lastRow > 2) {
           sheet.getRange(2, 1, lastRow - 1, 7).sort([
             { column: 1, ascending: true },
@@ -1103,13 +1107,23 @@ const APPS_SCRIPT_CODE = `function doGet(e) {
       }
       return ContentService.createTextOutput("SUCCESS");
     } 
-    
-    // 2. SYNC ALL / CHUNK
-    else if (e.parameter.action === "sync_chunk" || e.parameter.action === "sync_all") {
-      var isFirst = e.parameter.is_first === "1";
-      var txList = [];
-      if (e.parameter.payload) {
-        txList = JSON.parse(e.parameter.payload);
+    // 2. SYNC ALL / SYNC CHUNK
+    else if ((action === "sync_all" || action === "sync_chunk") && e.parameter.payload) {
+      var txList = JSON.parse(e.parameter.payload);
+      var isFirst = (e.parameter.is_first === "1" || action === "sync_all");
+      
+      if (isFirst) {
+        var allSheets = ss.getSheets();
+        allSheets.forEach(function(s) {
+          s.clear();
+          s.appendRow(["Date", "Time", "Type", "Amount", "Currency", "Description", "Balance"]);
+          var headerRange = s.getRange(1, 1, 1, 7);
+          headerRange.setBackground("#0F9D58")
+                     .setFontColor("#FFFFFF")
+                     .setFontWeight("bold")
+                     .setHorizontalAlignment("center");
+          s.setRowHeight(1, 35);
+        });
       }
       
       var txByMonth = {};
@@ -1132,17 +1146,6 @@ const APPS_SCRIPT_CODE = `function doGet(e) {
           sheet = ss.insertSheet(sheetName);
         }
         
-        if (isFirst) {
-          sheet.clear();
-          sheet.appendRow(["Date", "Time", "Type", "Amount", "Currency", "Description", "Balance"]);
-          var headerRange = sheet.getRange(1, 1, 1, 7);
-          headerRange.setBackground("#0F9D58")
-                     .setFontColor("#FFFFFF")
-                     .setFontWeight("bold")
-                     .setHorizontalAlignment("center");
-          sheet.setRowHeight(1, 35);
-        }
-        
         var list = txByMonth[sheetName];
         list.forEach(function(tx) {
           var d = new Date(tx.timestamp);
@@ -1151,17 +1154,27 @@ const APPS_SCRIPT_CODE = `function doGet(e) {
           var tag = tx.tag || "";
           var balance = tx.runningBalance !== undefined ? Number(tx.runningBalance) : "";
           
-          sheet.appendRow([tx.date, timeStr, tx.type, amount, tx.currency, tag, balance]);
-          var r = sheet.getLastRow();
-          styleRow(sheet, r, tx.type);
+          if (!isDuplicateRow(sheet, tx.date, timeStr, tx.type, amount, tx.currency, tag)) {
+            sheet.appendRow([tx.date, timeStr, tx.type, amount, tx.currency, tag, balance]);
+            var r = sheet.getLastRow();
+            styleRow(sheet, r, tx.type);
+          }
         });
+        
+        var lastR = sheet.getLastRow();
+        if (lastR > 2) {
+          sheet.getRange(2, 1, lastR - 1, 7).sort([
+            { column: 1, ascending: true },
+            { column: 2, ascending: true }
+          ]);
+        }
         sheet.autoResizeColumns(1, 7);
       }
-      return ContentService.createTextOutput("SUCCESS SYNC");
+      
+      return ContentService.createTextOutput("SUCCESS SYNC CHUNK");
     }
-    
-    // 3. GET ALL (IMPORT TO WEB APP)
-    else if (e.parameter.action === "get_all") {
+    // 3. GET ALL (นำเข้าข้อมูลกลับเข้า Web App)
+    else if (action === "get_all") {
       var sheets = ss.getSheets();
       var allTransactions = [];
       
@@ -1220,20 +1233,20 @@ const APPS_SCRIPT_CODE = `function doGet(e) {
     
     return ContentService.createTextOutput("Tracker API Ready!");
   } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() }))
-      .setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput("ERROR: " + err.toString());
   }
 }
 
 function isDuplicateRow(sheet, date, timeStr, type, amount, currency, tag) {
   var lastRow = sheet.getLastRow();
   if (lastRow <= 1) return false;
+  
   var data = sheet.getRange(2, 1, lastRow - 1, 7).getValues();
   for (var i = 0; i < data.length; i++) {
     var r = data[i];
     if (r[0] && String(r[0]) === String(date) && 
         String(r[1]) === String(timeStr) && 
-        String(r[2]).toLowerCase() === String(type).toLowerCase() && 
+        String(r[2]) === String(type) && 
         Number(r[3]) === Number(amount) && 
         String(r[4]) === String(currency) && 
         String(r[5]) === String(tag)) {
@@ -1250,6 +1263,7 @@ function getMonthlySheet(ss, timestamp) {
     "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
   ];
   var sheetName = months[d.getMonth()] + " " + d.getFullYear();
+  
   var sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
     sheet = ss.insertSheet(sheetName);
@@ -1264,22 +1278,25 @@ function getMonthlySheet(ss, timestamp) {
   return sheet;
 }
 
-function styleRow(sheet, rowIdx, type) {
-  var rowRange = sheet.getRange(rowIdx, 1, 1, 7);
-  rowRange.setFontColor("#E0E0E0");
-  rowRange.setBackground(rowIdx % 2 === 0 ? "#1E1F24" : "#17181C");
-  sheet.getRange(rowIdx, 1, 1, 7).setHorizontalAlignment("center");
-  sheet.getRange(rowIdx, 6).setHorizontalAlignment("left");
+function styleRow(sheet, rowNum, type) {
+  var range = sheet.getRange(rowNum, 1, 1, 7);
+  sheet.setRowHeight(rowNum, 28);
+  range.setVerticalAlignment("middle");
   
-  var typeCell = sheet.getRange(rowIdx, 3);
-  var amtCell = sheet.getRange(rowIdx, 4);
   if (type === "income") {
-    typeCell.setFontColor("#10B981").setFontWeight("bold");
-    amtCell.setFontColor("#10B981").setFontWeight("bold");
+    range.setBackground("#E8F5E9");
+    sheet.getRange(rowNum, 3).setFontColor("#2E7D32").setFontWeight("bold");
+    sheet.getRange(rowNum, 4).setFontColor("#1B5E20").setFontWeight("bold");
   } else {
-    typeCell.setFontColor("#EF4444").setFontWeight("bold");
-    amtCell.setFontColor("#EF4444").setFontWeight("bold");
+    range.setBackground("#FFEBEE");
+    sheet.getRange(rowNum, 3).setFontColor("#C62828").setFontWeight("bold");
+    sheet.getRange(rowNum, 4).setFontColor("#B71C1C").setFontWeight("bold");
   }
+  sheet.getRange(rowNum, 7).setFontWeight("bold").setFontColor("#0F9D58");
+}
+
+function doPost(e) {
+  return doGet(e);
 }`;
 
 // Modal Logic for Google Sheets & Tab Switching
