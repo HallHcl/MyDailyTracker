@@ -1,7 +1,7 @@
 const CACHE_NAME = 'daily-tracker-v2';
 const ASSETS = [
   './',
-  './index.html',
+  './money.html',
   './style.css',
   './script.js',
   './manifest.json',

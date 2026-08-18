@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+  <title>My Daily Tracker - Financial Dashboard</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="apple-touch-icon" href="favicon.svg">
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <meta name="theme-color" content="#10B981">
+</head>
+<body>
+  <!-- Mobile Sidebar Overlay Backdrop -->
+  <div id="sidebar-overlay" class="sidebar-overlay"></div>
+
+  <div class="app-container">
+    
+    <!-- Left Sidebar Navigation -->
+    <aside id="app-sidebar" class="app-sidebar">
+      <!-- Brand Logo & Title -->
+      <div class="brand-section">
+        <div class="brand-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="18" rx="2"></rect>
+            <line x1="2" y1="9" x2="22" y2="9"></line>
+            <line x1="10" y1="21" x2="10" y2="9"></line>
+          </svg>
+        </div>
+        <div class="brand-title-group">
+          <h1 class="brand-title">My Daily Tracker</h1>
+          <span style="font-size: 0.7rem; color: var(--text-muted); font-weight: 500;">Financial Ledger</span>
+        </div>
+      </div>
+
+      <!-- Main Navigation Menu -->
+      <div class="sidebar-nav-group">
+        <div class="sidebar-label">MAIN MENU</div>
+        <button id="tab-btn-dashboard" class="sidebar-nav-btn active">
+          <span class="icon">📊</span>
+          <span>Dashboard Sheet</span>
+        </button>
+        <button id="tab-btn-tracker" class="sidebar-nav-btn">
+          <span class="icon">📄</span>
+          <span>Tracker Sheet</span>
+        </button>
+      </div>
+
+      <!-- Settings & Data Management -->
+      <div class="sidebar-nav-group">
+        <div class="sidebar-label">SETTINGS</div>
+        <button id="edit-balance-btn" class="sidebar-nav-btn">
+          <span class="icon">⚙️</span>
+          <span>Set Initial Balances</span>
+        </button>
+        <button id="sheets-btn" class="sidebar-nav-btn">
+          <span class="icon">☁️</span>
+          <span>Google Sheets Sync</span>
+        </button>
+        <button id="copy-btn" class="sidebar-nav-btn">
+          <span class="icon">📋</span>
+          <span>Copy Clipboard</span>
+        </button>
+        <button id="clear-data-btn" class="sidebar-nav-btn" style="color: var(--expense-color);">
+          <span class="icon">🗑️</span>
+          <span>Clear All Data</span>
+        </button>
+      </div>
+
+      <!-- Sidebar Footer (Cloud Status) -->
+      <div class="sidebar-footer">
+        <div class="cloud-status-badge">
+          <span id="sheets-status-dot" class="status-dot offline"></span>
+          <span id="cloud-status">Saved to Local Storage</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Wrapper -->
+    <div class="main-wrapper">
+      
+      <!-- Main Topbar Header -->
+      <header class="main-topbar">
+        <div class="main-topbar-left">
+          <button id="sidebar-toggle-btn" class="sidebar-toggle-btn" aria-label="Toggle Sidebar Menu">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+          
+          <!-- Month & Year Filter Selector -->
+          <div class="month-select-wrapper">
+            <select id="month-filter-select" class="month-select" aria-label="Select month filter">
+              <!-- Injected dynamically e.g. "แสดงทุกเดือน (All Time)" / "กรกฎาคม 2026" -->
+            </select>
+          </div>
+        </div>
+
+        <div id="current-date" class="kpi-currency" style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);"></div>
+      </header>
+
+      <!-- Account Balances Toolbar -->
+      <section class="balances-bar">
+        <span class="balances-label">REMAINING BALANCES:</span>
+        <div id="grand-total-list" class="balance-chips-list">
+          <!-- Balances injected dynamically -->
+        </div>
+      </section>
+
+      <!-- Main Content Views -->
+      <main class="main-content-view">
+
+        <!-- Quick Add Transaction Card (Visible on all views!) -->
+        <section class="add-transaction-card">
+          <div class="form-grid">
+            <div class="input-group">
+              <label for="date-input" class="input-label">Date</label>
+              <input type="date" id="date-input" class="input-field">
+            </div>
+            
+            <div class="input-group">
+              <label for="amount-input" class="input-label">Amount</label>
+              <input type="number" id="amount-input" class="input-field amount-input" placeholder="0.00" min="0" step="any" inputmode="decimal">
+            </div>
+            
+            <div class="input-group">
+              <label for="currency-select" class="input-label">Currency</label>
+              <select id="currency-select" class="input-field select-field">
+                <option value="THB">THB</option>
+              </select>
+            </div>
+            
+            <div class="input-group" id="desc-group">
+              <label for="desc-input" class="input-label">Description</label>
+              <input type="text" id="desc-input" class="input-field" placeholder="e.g. Salary, Coffee, Groceries">
+            </div>
+            
+            <div class="form-actions">
+              <button id="submit-income-btn" class="btn-primary income">
+                <span>+</span> Income
+              </button>
+              <button id="submit-expense-btn" class="btn-primary expense">
+                <span>-</span> Expense
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB 1: DASHBOARD VIEW (DEFAULT LANDING VIEW) -->
+        <div id="view-dashboard" class="tab-view active">
+          <div class="dashboard-grid-container">
+            
+            <!-- Accounts Summary Card -->
+            <div class="dash-card full-width">
+              <h2 class="dash-card-title">💰 Accounts Summary (Initial vs. Remaining)</h2>
+              <div id="dash-balances"></div>
+            </div>
+
+            <!-- Daily Breakdown Table Card -->
+            <div class="dash-card full-width">
+              <h2 class="dash-card-title">🗓️ Daily Financial Breakdown</h2>
+              <div id="dash-daily-breakdown" class="daily-table-container"></div>
+            </div>
+
+            <!-- Period Stats Overview -->
+            <div class="dash-card">
+              <h2 class="dash-card-title">📈 Period Stats Overview</h2>
+              <div id="dash-today-stats"></div>
+            </div>
+
+            <!-- Income vs Expense Breakdown -->
+            <div class="dash-card">
+              <h2 class="dash-card-title">⚖️ Income vs Expense Breakdown</h2>
+              <div id="dash-charts-container" class="charts-list"></div>
+            </div>
+
+            <!-- All Time Activity Stats -->
+            <div class="dash-card full-width">
+              <h2 class="dash-card-title">📋 Activity Log Stats</h2>
+              <div id="dash-activity-stats"></div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- TAB 2: TRACKER VIEW -->
+        <div id="view-tracker" class="tab-view hidden">
+          
+          <!-- KPI Summary Cards -->
+          <section class="kpi-summary-grid">
+            <div class="kpi-card income">
+              <div class="kpi-header">
+                <span id="summary-income-label" class="kpi-title">PERIOD INCOME</span>
+              </div>
+              <div id="today-income" class="kpi-values-list"></div>
+            </div>
+            
+            <div class="kpi-card expense">
+              <div class="kpi-header">
+                <span id="summary-expense-label" class="kpi-title">PERIOD EXPENSE</span>
+              </div>
+              <div id="today-expense" class="kpi-values-list"></div>
+            </div>
+            
+            <div class="kpi-card net">
+              <div class="kpi-header">
+                <span id="summary-net-label" class="kpi-title">NET PERIOD</span>
+              </div>
+              <div id="today-net" class="kpi-values-list"></div>
+            </div>
+          </section>
+
+          <!-- Table Toolbar & Search -->
+          <div class="table-toolbar">
+            <div class="search-box">
+              <span class="search-icon">🔍</span>
+              <input type="text" id="search-input" class="search-input" placeholder="Search description, amount, currency...">
+            </div>
+            <button id="delete-selected-btn" class="btn-danger-outline hidden" title="ลบรายการที่เลือก">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              <span>ลบรายการที่เลือก (<span id="selected-count">0</span>)</span>
+            </button>
+          </div>
+
+          <!-- Modern Data Table with Pagination (11 items/page) -->
+          <section class="data-table-container">
+            <div class="table-scroll-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th class="col-checkbox">
+                      <input type="checkbox" id="select-all-tx-checkbox" class="tx-checkbox-custom" title="Select All">
+                    </th>
+                    <th>Date & Time</th>
+                    <th>Type</th>
+                    <th>Amount</th>
+                    <th>Currency</th>
+                    <th>Description</th>
+                    <th style="text-align: center;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="transaction-list">
+                  <!-- Dynamic Rows Injected Here -->
+                </tbody>
+              </table>
+            </div>
+            
+            <!-- Table Pagination Bar -->
+            <div class="table-pagination">
+              <span id="pagination-info" class="pagination-info">Showing 0 of 0 entries</span>
+              <div class="pagination-controls">
+                <button id="prev-page-btn" class="btn-secondary pagination-btn" disabled>‹ Prev</button>
+                <span id="page-number-display" class="page-number-badge">Page 1 of 1</span>
+                <button id="next-page-btn" class="btn-secondary pagination-btn" disabled>Next ›</button>
+              </div>
+            </div>
+          </section>
+        </div>
+
+      </main>
+
+    </div>
+
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Delete Confirmation Modal -->
+  <div id="confirm-delete-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="delete-modal-title">🗑️ ยืนยันการลบรายการ</h3>
+        <p id="delete-modal-msg">คุณต้องการลบรายการที่เลือกใช่หรือไม่? พิมพ์คำว่า <strong style="color: var(--expense-color);">delete</strong> ด้านล่างเพื่อยืนยัน:</p>
+      </div>
+      <div class="modal-body" style="margin-top: 10px;">
+        <input type="text" id="delete-confirm-input" class="input-field" placeholder="พิมพ์ 'delete' เพื่อยืนยัน" autocomplete="off">
+      </div>
+      <div class="modal-actions">
+        <button id="cancel-delete-btn" class="btn-secondary">ยกเลิก (Cancel)</button>
+        <button id="confirm-delete-btn" class="btn-danger" disabled>ยืนยันการลบ (Delete)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Clear All Data Confirmation Modal -->
+  <div id="confirm-clear-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>⚠️ Clear All Data</h3>
+        <p>This action will permanently erase all transaction records. To confirm, please type <strong style="color: var(--expense-color);">clearall</strong> below:</p>
+      </div>
+      <div class="modal-body" style="margin-top: 10px;">
+        <input type="text" id="clear-confirm-input" class="input-field" placeholder="Type 'clearall' to confirm" autocomplete="off">
+      </div>
+      <div class="modal-actions">
+        <button id="cancel-clear-btn" class="btn-secondary">Cancel</button>
+        <button id="confirm-clear-btn" class="btn-danger" disabled>Confirm Clear All</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Transaction Modal -->
+  <div id="edit-tx-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Edit Transaction</h3>
+        <p>Modify details of the selected transaction entry.</p>
+      </div>
+      <div class="modal-body" style="display: flex; flex-direction: column; gap: 12px;">
+        <input type="hidden" id="edit-tx-id">
+        <div class="input-group">
+          <label for="edit-tx-date" class="input-label">Date</label>
+          <input type="date" id="edit-tx-date" class="input-field">
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <div class="input-group" style="flex: 1;">
+            <label for="edit-tx-amount" class="input-label">Amount</label>
+            <input type="number" id="edit-tx-amount" class="input-field" min="0" step="any">
+          </div>
+          <div class="input-group" style="width: 120px;">
+            <label for="edit-tx-type" class="input-label">Type</label>
+            <select id="edit-tx-type" class="input-field select-field">
+              <option value="income">Income</option>
+              <option value="expense">Expense</option>
+            </select>
+          </div>
+        </div>
+        <div class="input-group">
+          <label for="edit-tx-curr" class="input-label">Currency</label>
+          <input type="text" id="edit-tx-curr" class="input-field">
+        </div>
+        <div class="input-group">
+          <label for="edit-tx-desc" class="input-label">Description</label>
+          <input type="text" id="edit-tx-desc" class="input-field">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="cancel-edit-tx-btn" class="btn-secondary">Cancel</button>
+        <button id="save-edit-tx-btn" class="btn-primary income">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Initial Balances Modal -->
+  <div id="balance-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Set Initial Balances</h3>
+        <p>Enter starting balance amounts for your currencies.</p>
+      </div>
+      <div id="balance-inputs-container" class="modal-body" style="display: flex; flex-direction: column; gap: 10px; max-height: 250px; overflow-y: auto;"></div>
+      <button id="add-currency-btn" class="btn-secondary" style="width: 100%;">+ Add Currency</button>
+      <div class="modal-actions">
+        <button id="cancel-balance-btn" class="btn-secondary">Cancel</button>
+        <button id="save-balance-btn" class="btn-primary income">Save Balances</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Google Sheets Sync & Data Import Modal -->
+  <div id="sheets-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3>☁️ Google Sheets Sync & Import</h3>
+        <p>เชื่อมต่อ นำเข้า (Import) และซิงค์ข้อมูลกับ Google Sheets</p>
+      </div>
+
+      <!-- Modal Tabs -->
+      <div class="modal-nav-tabs">
+        <button id="modal-tab-cloud" class="modal-tab-btn active" type="button">☁️ Cloud Sync / Import</button>
+        <button id="modal-tab-paste" class="modal-tab-btn" type="button">📋 Direct Paste (วางข้อมูล)</button>
+        <button id="modal-tab-code" class="modal-tab-btn" type="button">📜 โค้ด Apps Script</button>
+      </div>
+
+      <!-- Tab 1: Cloud Sync & Auto Import -->
+      <div id="tab-content-cloud" class="modal-body" style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label style="font-size: var(--font-xs); color: var(--text-secondary); font-weight: 600; margin-bottom: 6px; display: block;">
+            Web App URL (จาก Apps Script):
+          </label>
+          <input type="text" id="sheets-url-input" class="input-field" placeholder="https://script.google.com/macros/s/.../exec">
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <button id="import-sheets-btn" class="btn-import" type="button">
+            <span>📥 Import จาก Sheets</span>
+          </button>
+          <button id="sync-all-btn" class="btn-sync" type="button">
+            <span>⚡ Sync ข้อมูลไป Sheets</span>
+          </button>
+        </div>
+
+        <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: var(--radius-sm); padding: 10px 12px; font-size: var(--font-xs); color: var(--text-secondary); line-height: 1.5;">
+          💡 <strong>ข้อแนะนำสำหรับการย้ายเครื่อง/ลง Windows ใหม่:</strong><br>
+          เพียงแค่นำ Web App URL เดิมมาวาง แล้วกดปุ่ม <strong>📥 Import จาก Sheets</strong> ข้อมูลทั้งหมดที่เคยบันทึกไว้ใน Google Sheets จะถูกโหลดกลับเข้ามาในเครื่องนี้ทันที!
+        </div>
+      </div>
+
+      <!-- Tab 2: Direct Paste (Manual Copy-Paste from Sheets) -->
+      <div id="tab-content-paste" class="modal-body hidden" style="display: flex; flex-direction: column; gap: 12px;">
+        <label style="font-size: var(--font-xs); color: var(--text-secondary); line-height: 1.4;">
+          คัดลอกตารางจาก Google Sheets (ทุกคอลัมน์ A ถึง G) แล้วนำมา <strong>Ctrl + V วางในช่องด้านล่างนี้</strong>:
+        </label>
+        <textarea id="paste-import-input" class="input-field" style="height: 120px; font-family: monospace; font-size: 11px; resize: vertical;" placeholder="วางตารางที่คัดลอกจาก Google Sheets ที่นี่..."></textarea>
+        <button id="paste-import-btn" class="btn-import" type="button" style="width: 100%;">
+          <span>📥 นำเข้าข้อมูลจากตารางที่วาง</span>
+        </button>
+      </div>
+
+      <!-- Tab 3: Google Apps Script Source Code -->
+      <div id="tab-content-code" class="modal-body hidden" style="display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: var(--font-xs); color: var(--text-secondary);">โค้ด Google Apps Script (รองรับทั้ง Sync และ Import):</span>
+          <button id="copy-script-code-btn" class="btn-secondary btn-copy-code" type="button">📋 Copy Code</button>
+        </div>
+        <div id="script-code-snippet" class="code-snippet-box"></div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="cancel-sheets-btn" class="btn-secondary" type="button">Close</button>
+        <button id="save-sheets-btn" class="btn-primary income" type="button">Save URL</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
