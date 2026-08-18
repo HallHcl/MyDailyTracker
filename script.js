@@ -5,7 +5,7 @@ const THAI_MONTHS = [
 ];
 
 // State variables (100% Backward Compatible with localStorage schemas)
-let initialBalances = { "THB": 10000 };
+let initialBalances = { "THB": 0 };
 let transactions = [];
 let lastLoginDate = null;
 let googleSheetUrl = "";
@@ -130,7 +130,6 @@ const scriptCodeSnippet = document.getElementById('script-code-snippet');
 // Initialization
 function init() {
   loadData();
-  seedMockData(); // Freshly seed 31 days of Month 7 (July 2026) mock data
   checkMissingDays();
   renderDate();
   if (dateInput) dateInput.value = getTodayDateString();
@@ -150,62 +149,12 @@ function init() {
   }, 60000);
 }
 
-// Seed Mock Data for July 2026 (Month 7 - 31 Days)
-function seedMockData() {
-  const isAlreadySeeded = localStorage.getItem('tracker_isSeeded');
-  if (isAlreadySeeded === 'true') return;
-
-  if (transactions.some(tx => !tx.isDummy)) {
-    localStorage.setItem('tracker_isSeeded', 'true');
-    return;
-  }
-
-  initialBalances = { "THB": 10000, "WIP": 500 };
-
-  const mockTemplates = [
-    { type: 'income', curr: 'THB', baseAmount: 1200, tag: 'ขายของออนไลน์' },
-    { type: 'expense', curr: 'THB', baseAmount: 60, tag: 'กาแฟสด' },
-    { type: 'expense', curr: 'THB', baseAmount: 150, tag: 'ข้าวเย็น' },
-    { type: 'income', curr: 'THB', baseAmount: 800, tag: 'เงินส่วนต่างขายเกม' },
-    { type: 'expense', curr: 'THB', baseAmount: 220, tag: 'ซื้อของเซเว่น' },
-    { type: 'income', curr: 'WIP', baseAmount: 50, tag: 'ฟาร์มไอเทมเกม' },
-    { type: 'expense', curr: 'THB', baseAmount: 350, tag: 'บุฟเฟต์ชาบู' },
-    { type: 'expense', curr: 'WIP', baseAmount: 20, tag: 'ซื้อยาเติมเลือดในเกม' },
-    { type: 'expense', curr: 'THB', baseAmount: 45, tag: 'ค่ารถเมล์/BTS' }
-  ];
-
-  for (let day = 1; day <= 31; day++) {
-    const dayStr = day < 10 ? `0${day}` : `${day}`;
-    const dateStr = `2026-07-${dayStr}`;
-    
-    const entriesCount = (day % 4 === 0) ? 3 : 2;
-    for (let i = 0; i < entriesCount; i++) {
-      const template = mockTemplates[(day * 2 + i) % mockTemplates.length];
-      const variance = (day * 7 + i * 13) % 150;
-      const amount = template.baseAmount + variance;
-      
-      const hour = 9 + (i * 4);
-      const timestamp = new Date(`2026-07-${dayStr}T${hour < 10 ? '0' + hour : hour}:15:00`).getTime();
-
-      transactions.push({
-        id: generateId(),
-        date: dateStr,
-        timestamp: timestamp,
-        type: template.type,
-        currency: template.curr,
-        tag: template.tag,
-        amount: amount
-      });
-    }
-  }
-
-  localStorage.setItem('tracker_isSeeded', 'true');
-  saveData();
-}
-
 function clearAllData() {
   transactions = [];
-  initialBalances = { "THB": 10000 };
+  initialBalances = { "THB": 0 };
+  localStorage.removeItem('tracker_transactions');
+  localStorage.removeItem('tracker_initialBalances');
+  localStorage.removeItem('tracker_lastLoginDate');
   localStorage.setItem('tracker_isSeeded', 'true');
   saveData();
   currentPage = 1;
@@ -220,7 +169,7 @@ function loadData() {
   if (savedInitial && Object.keys(savedInitial).length > 0) {
     initialBalances = savedInitial;
   } else {
-    initialBalances = { "THB": 10000 };
+    initialBalances = { "THB": 0 };
   }
   
   const savedTransactions = JSON.parse(localStorage.getItem('tracker_transactions'));
