@@ -1335,11 +1335,7 @@ function importFromGoogleSheets() {
       return;
     }
 
-    let addedCount = 0;
-    const existingKeys = new Set(
-      transactions.filter(t => !t.isDummy).map(t => `${t.date}_${t.type}_${Number(t.amount)}_${t.currency}_${t.tag || ''}`)
-    );
-
+    const importedTransactions = [];
     rawList.forEach((item, index) => {
       const amt = Number(item.amount);
       if (isNaN(amt) || amt <= 0) return;
@@ -1347,47 +1343,45 @@ function importFromGoogleSheets() {
       const curr = (item.currency || 'THB').toUpperCase();
       const tag = item.tag || item.description || '';
       const dateStr = item.date || getTodayDateString();
+      const timeStr = item.time || '';
 
-      // Deduplication check
-      const key = `${dateStr}_${type}_${amt}_${curr}_${tag}`;
-      if (!existingKeys.has(key)) {
-        existingKeys.add(key);
+      let parsedTimestamp = Date.now() - (rawList.length - index) * 1000;
+      if (timeStr) {
+        const tryDate = new Date(`${dateStr} ${timeStr}`);
+        if (!isNaN(tryDate.getTime())) parsedTimestamp = tryDate.getTime();
+      } else {
+        const tryDate = new Date(dateStr);
+        if (!isNaN(tryDate.getTime())) parsedTimestamp = tryDate.getTime() + (index * 60000);
+      }
 
-        let parsedTimestamp = Date.now() - (rawList.length - index) * 1000;
-        if (item.time) {
-          const tryDate = new Date(`${dateStr} ${item.time}`);
-          if (!isNaN(tryDate.getTime())) parsedTimestamp = tryDate.getTime();
-        } else {
-          const tryDate = new Date(dateStr);
-          if (!isNaN(tryDate.getTime())) parsedTimestamp = tryDate.getTime() + (index * 60000);
-        }
+      importedTransactions.push({
+        id: generateId(),
+        date: dateStr,
+        timestamp: parsedTimestamp,
+        type: type,
+        currency: curr,
+        tag: tag,
+        amount: amt
+      });
 
-        transactions.push({
-          id: generateId(),
-          date: dateStr,
-          timestamp: parsedTimestamp,
-          type: type,
-          currency: curr,
-          tag: tag,
-          amount: amt
-        });
-
-        // Ensure currency exists in initialBalances
-        if (initialBalances[curr] === undefined) {
-          initialBalances[curr] = 0;
-        }
-
-        addedCount++;
+      // Ensure currency exists in initialBalances
+      if (initialBalances[curr] === undefined) {
+        initialBalances[curr] = 0;
       }
     });
 
-    // Mark as seeded to prevent mock overwrite
-    localStorage.setItem('tracker_isSeeded', 'true');
-    saveData();
-    updateUI();
+    if (importedTransactions.length > 0) {
+      transactions = importedTransactions;
+      localStorage.setItem('tracker_isSeeded', 'true');
+      saveData();
+      currentPage = 1;
+      updateUI();
 
-    showToast(`นำเข้าข้อมูล ${addedCount} รายการจาก Google Sheets สำเร็จ!`, "success");
-    sheetsModal.classList.add('hidden');
+      showToast(`นำเข้าข้อมูลครบถ้วน ${transactions.length} รายการจาก Google Sheets สำเร็จ!`, "success");
+      sheetsModal.classList.add('hidden');
+    } else {
+      showToast("ไม่พบข้อมูลที่สามารถนำเข้าได้", "info");
+    }
   };
 
   // Attempt JSONP Callback first (100% reliable cross-origin for Google Apps Script)
@@ -1577,45 +1571,41 @@ function importFromPastedText() {
     if (isNaN(amt) || amt <= 0) return;
     if (!curr || curr.length > 5) curr = "THB";
 
-    const key = `${dateStr}_${typeStr}_${amt}_${curr}_${tag}`;
-    if (!existingKeys.has(key)) {
-      existingKeys.add(key);
-
-      let parsedTimestamp = Date.now() - (lines.length - index) * 1000;
-      if (timeStr) {
-        const tryDate = new Date(`${dateStr} ${timeStr}`);
-        if (!isNaN(tryDate.getTime())) parsedTimestamp = tryDate.getTime();
-      } else {
-        const tryDate = new Date(dateStr);
-        if (!isNaN(tryDate.getTime())) parsedTimestamp = tryDate.getTime() + (index * 60000);
-      }
-
-      transactions.push({
-        id: generateId(),
-        date: dateStr,
-        timestamp: parsedTimestamp,
-        type: typeStr,
-        currency: curr,
-        tag: tag,
-        amount: amt
-      });
-
-      if (initialBalances[curr] === undefined) {
-        initialBalances[curr] = 0;
-      }
-      addedCount++;
+    let parsedTimestamp = Date.now() - (lines.length - index) * 1000;
+    if (timeStr) {
+      const tryDate = new Date(`${dateStr} ${timeStr}`);
+      if (!isNaN(tryDate.getTime())) parsedTimestamp = tryDate.getTime();
+    } else {
+      const tryDate = new Date(dateStr);
+      if (!isNaN(tryDate.getTime())) parsedTimestamp = tryDate.getTime() + (index * 60000);
     }
+
+    transactions.push({
+      id: generateId(),
+      date: dateStr,
+      timestamp: parsedTimestamp,
+      type: typeStr,
+      currency: curr,
+      tag: tag,
+      amount: amt
+    });
+
+    if (initialBalances[curr] === undefined) {
+      initialBalances[curr] = 0;
+    }
+    addedCount++;
   });
 
   if (addedCount > 0) {
     localStorage.setItem('tracker_isSeeded', 'true');
     saveData();
+    currentPage = 1;
     updateUI();
     pasteImportInput.value = '';
     sheetsModal.classList.add('hidden');
-    showToast(`นำเข้าข้อมูลสำเร็จ ${addedCount} รายการ!`, "success");
+    showToast(`นำเข้าข้อมูลครบถ้วน ${addedCount} รายการสำเร็จ!`, "success");
   } else {
-    showToast("ไม่พบรายการที่สามารถนำเข้าได้ หรือรายการทั้งหมดมีอยู่แล้ว", "info");
+    showToast("ไม่พบรายการที่สามารถนำเข้าได้", "info");
   }
 }
 
