@@ -881,8 +881,12 @@ function renderDashboardView(selectedYM, filteredTxs) {
   `;
 }
 
-// Logic: Add Transaction
+// Logic: Add Transaction with Anti-Double-Submit Lock
+let isSubmittingTx = false;
+
 function handleTransaction(type) {
+  if (isSubmittingTx) return; // Prevent rapid double clicks / double submits
+
   const amountStr = amountInput.value.trim();
   const currStr = currencySelect.value;
   const descStr = descInput.value.trim();
@@ -900,6 +904,9 @@ function handleTransaction(type) {
     showToast("โปรดกรอกตัวเลขจำนวนเงินให้ถูกต้อง", "error");
     return;
   }
+
+  isSubmittingTx = true;
+  setTimeout(() => { isSubmittingTx = false; }, 400); // 400ms cooldown lock
   
   const tx = {
     id: generateId(),
@@ -1895,12 +1902,18 @@ function setupEventListeners() {
   submitIncomeBtn.addEventListener('click', () => handleTransaction('income'));
   submitExpenseBtn.addEventListener('click', () => handleTransaction('expense'));
 
-  descInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') handleTransaction('income');
+  descInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.isComposing) {
+      e.preventDefault();
+      handleTransaction('income');
+    }
   });
   
-  amountInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') descInput.focus();
+  amountInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.isComposing) {
+      e.preventDefault();
+      descInput.focus();
+    }
   });
 
   // Modal Edit Events
