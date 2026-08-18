@@ -1471,6 +1471,18 @@ function importFromPastedText() {
     return;
   }
 
+  // 💡 Smart UX: If the user pasted a Web App URL here instead of table rows
+  if (rawText.includes("script.google.com")) {
+    const matchedUrl = rawText.match(/https:\/\/script\.google\.com\/[^\s\r\n]+/);
+    if (matchedUrl) {
+      if (sheetsUrlInput) sheetsUrlInput.value = matchedUrl[0];
+      switchSheetsModalTab('cloud');
+      showToast("ตรวจพบ Web App URL! กำลังดึงข้อมูลจาก Google Sheets ให้...", "info");
+      importFromGoogleSheets();
+      return;
+    }
+  }
+
   const lines = rawText.split(/\r?\n/);
   let addedCount = 0;
   const existingKeys = new Set(
@@ -1478,28 +1490,92 @@ function importFromPastedText() {
   );
 
   lines.forEach((line, index) => {
-    if (!line.trim()) return;
+    const trimmedLine = line.trim();
+    if (!trimmedLine) return;
 
-    // Detect delimiter (\t from copy-pasting tables or comma)
-    const cols = line.includes('\t') ? line.split('\t') : line.split(',');
-    if (cols.length < 4) return;
+    // Detect delimiter (\t from copy-pasting tables, comma, or semicolon)
+    let cols = [];
+    if (trimmedLine.includes('\t')) cols = trimmedLine.split('\t');
+    else if (trimmedLine.includes(',')) cols = trimmedLine.split(',');
+    else if (trimmedLine.includes(';')) cols = trimmedLine.split(';');
+    else cols = trimmedLine.split(/\s{2,}/); // 2 or more spaces
+
+    cols = cols.map(c => c.trim());
+    if (cols.length < 3) return;
 
     // Skip header row
-    const firstCol = cols[0].trim().toLowerCase();
-    if (firstCol.includes('date') || firstCol.includes('วันที่') || firstCol.includes('time')) return;
+    const firstCol = cols[0].toLowerCase();
+    if (firstCol.includes('date') || firstCol.includes('วันที่') || firstCol.includes('เวลา') || firstCol.includes('ลำดับ')) return;
 
-    const dateStr = cols[0].trim();
-    const timeStr = cols[1] ? cols[1].trim() : '';
-    let typeStr = cols[2] ? cols[2].trim().toLowerCase() : 'income';
-    if (typeStr.includes('exp') || typeStr.includes('จ่าย') || typeStr.includes('เสีย')) typeStr = 'expense';
-    else typeStr = 'income';
+    // Parse Date
+    let rawDate = cols[0];
+    let dateStr = "";
+    if (rawDate.includes('/') || rawDate.includes('-')) {
+      const parts = rawDate.split(/[\/\-]/);
+      if (parts.length === 3) {
+        if (parts[0].length === 4) {
+          // YYYY-MM-DD
+          dateStr = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+        } else if (parts[2].length === 4) {
+          // DD/MM/YYYY
+          dateStr = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        } else {
+          dateStr = rawDate;
+        }
+      } else {
+        dateStr = rawDate;
+      }
+    } else {
+      dateStr = getTodayDateString();
+    }
 
-    let rawAmount = cols[3] ? cols[3].replace(/[^0-9.-]+/g, '') : '';
-    const amt = parseFloat(rawAmount);
+    // Determine column mapping based on standard sheets columns:
+    // Format A (7 cols): Date, Time, Type, Amount, Currency, Description, Balance
+    // Format B (6 cols): Date, Time, Type, Amount, Currency, Description
+    // Format C (5 cols): Date, Type, Amount, Currency, Description
+    let timeStr = "";
+    let typeStr = "income";
+    let rawAmount = "";
+    let curr = "THB";
+    let tag = "";
+
+    if (cols.length >= 6) {
+      timeStr = cols[1];
+      typeStr = cols[2].toLowerCase();
+      rawAmount = cols[3];
+      curr = cols[4] ? cols[4].toUpperCase() : "THB";
+      tag = cols[5] || "";
+    } else if (cols.length === 5) {
+      if (cols[1].includes(':')) {
+        // Date, Time, Type, Amount, Description
+        timeStr = cols[1];
+        typeStr = cols[2].toLowerCase();
+        rawAmount = cols[3];
+        tag = cols[4] || "";
+      } else {
+        // Date, Type, Amount, Currency, Description
+        typeStr = cols[1].toLowerCase();
+        rawAmount = cols[2];
+        curr = cols[3] ? cols[3].toUpperCase() : "THB";
+        tag = cols[4] || "";
+      }
+    } else if (cols.length >= 3) {
+      // Date, Type, Amount
+      typeStr = cols[1].toLowerCase();
+      rawAmount = cols[2];
+      if (cols[3]) tag = cols[3];
+    }
+
+    // Sanitize type
+    if (typeStr.includes('exp') || typeStr.includes('จ่าย') || typeStr.includes('เสีย') || typeStr.includes('-')) {
+      typeStr = 'expense';
+    } else {
+      typeStr = 'income';
+    }
+
+    const amt = parseFloat(rawAmount.replace(/[^0-9.-]+/g, ''));
     if (isNaN(amt) || amt <= 0) return;
-
-    const curr = (cols[4] ? cols[4].trim().toUpperCase() : 'THB') || 'THB';
-    const tag = cols[5] ? cols[5].trim() : '';
+    if (!curr || curr.length > 5) curr = "THB";
 
     const key = `${dateStr}_${typeStr}_${amt}_${curr}_${tag}`;
     if (!existingKeys.has(key)) {
