@@ -896,17 +896,37 @@
 }
 
 .code-snippet-box {
-  background: #0f1015;
+  background: #090a0e;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   padding: var(--space-3);
   font-family: 'Consolas', 'Courier New', monospace;
   font-size: 11px;
   color: #a7f3d0;
-  max-height: 180px;
-  overflow-y: auto;
+  max-height: 200px;
+  overflow: auto;
   white-space: pre;
-  line-height: 1.4;
+  line-height: 1.45;
+  scrollbar-width: thin;
+  scrollbar-color: #2e3340 #090a0e;
+}
+
+.code-snippet-box::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.code-snippet-box::-webkit-scrollbar-track {
+  background: #090a0e;
+}
+
+.code-snippet-box::-webkit-scrollbar-thumb {
+  background: #2e3340;
+  border-radius: 4px;
+}
+
+.code-snippet-box::-webkit-scrollbar-thumb:hover {
+  background: #404758;
 }
 
 .btn-copy-code {

@@ -11,6 +11,31 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  scrollbar-width: thin;
+  scrollbar-color: #2e3340 #12141a;
+}
+
+/* Global Custom Dark Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #12141a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2e3340;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #404758;
+}
+
+::-webkit-scrollbar-corner {
+  background: #12141a;
 }
 
 body {
