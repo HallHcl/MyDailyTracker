@@ -1306,10 +1306,17 @@ function saveSheetsUrl() {
 
 // 📥 Import Data from Google Sheets
 function importFromGoogleSheets() {
-  const urlToUse = sheetsUrlInput.value.trim() || googleSheetUrl;
+  let urlToUse = (sheetsUrlInput.value.trim() || googleSheetUrl).trim();
   if (!urlToUse || !urlToUse.includes("script.google.com")) {
     showToast("กรุณากรอก Web App URL จาก Apps Script ให้ถูกต้องก่อนกด Import ครับ", "error");
     return;
+  }
+
+  // Auto-fix URL if missing /exec
+  urlToUse = urlToUse.replace(/\/+$/, '');
+  if (!urlToUse.endsWith('/exec') && urlToUse.includes('/macros/s/')) {
+    urlToUse = urlToUse + '/exec';
+    if (sheetsUrlInput) sheetsUrlInput.value = urlToUse;
   }
 
   // Save URL if valid
