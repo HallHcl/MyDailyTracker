@@ -55,8 +55,24 @@
   box-shadow: 0 0 8px var(--brand-primary);
 }
 
+.status-dot.syncing {
+  background: #f59e0b;
+  box-shadow: 0 0 8px #f59e0b;
+  animation: pulseDot 1s infinite alternate;
+}
+
+.status-dot.error {
+  background: var(--expense-color);
+  box-shadow: 0 0 8px var(--expense-color);
+}
+
 .status-dot.offline {
   background: var(--text-muted);
+}
+
+@keyframes pulseDot {
+  from { opacity: 0.4; }
+  to { opacity: 1; }
 }
 
 /* Sidebar Navigation Groups & Links */

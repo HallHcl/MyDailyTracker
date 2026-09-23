@@ -62,6 +62,15 @@
           <span class="icon">📋</span>
           <span>Copy Clipboard</span>
         </button>
+        <button id="backup-json-btn" class="sidebar-nav-btn">
+          <span class="icon">💾</span>
+          <span>Backup JSON File</span>
+        </button>
+        <button id="restore-json-btn" class="sidebar-nav-btn">
+          <span class="icon">📂</span>
+          <span>Restore JSON File</span>
+        </button>
+        <input type="file" id="restore-file-input" accept=".json" style="display: none;">
         <button id="clear-data-btn" class="sidebar-nav-btn" style="color: var(--expense-color);">
           <span class="icon">🗑️</span>
           <span>Clear All Data</span>
@@ -427,6 +436,9 @@
     </div>
   </div>
 
+  <!-- Firebase SDKs (Compat v10.8.0 for seamless Vanilla JS) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

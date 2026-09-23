@@ -126,10 +126,201 @@ const pasteImportInput = document.getElementById('paste-import-input');
 const pasteImportBtn = document.getElementById('paste-import-btn');
 const copyScriptCodeBtn = document.getElementById('copy-script-code-btn');
 const scriptCodeSnippet = document.getElementById('script-code-snippet');
+const backupJsonBtn = document.getElementById('backup-json-btn');
+const restoreJsonBtn = document.getElementById('restore-json-btn');
+const restoreFileInput = document.getElementById('restore-file-input');
+
+// Firebase Configuration & Real-Time Sync State
+const firebaseConfig = {
+  apiKey: "AIzaSyDCoInbwxIUJcUDgCuotXpIXE1pn779Z7U",
+  authDomain: "mydailytracker-5d9b2.firebaseapp.com",
+  projectId: "mydailytracker-5d9b2",
+  storageBucket: "mydailytracker-5d9b2.firebasestorage.app",
+  messagingSenderId: "765420962900",
+  appId: "1:765420962900:web:07e41542cd3d5a3d8d99c1",
+  measurementId: "G-TLWEVVFGDP"
+};
+
+let db = null;
+let cloudSyncTimeout = null;
+let isInitialCloudLoad = true;
+let isFirebaseConnected = false;
+
+function updateCloudStatusUI(status, message) {
+  if (!sheetsStatusDot || !cloudStatus) return;
+  if (status === 'online') {
+    sheetsStatusDot.className = "status-dot online";
+    cloudStatus.textContent = message || "Synced to Firebase Cloud";
+  } else if (status === 'syncing') {
+    sheetsStatusDot.className = "status-dot syncing";
+    cloudStatus.textContent = message || "Syncing to Cloud...";
+  } else if (status === 'error') {
+    sheetsStatusDot.className = "status-dot error";
+    cloudStatus.textContent = message || "Cloud Permission Error";
+  } else {
+    sheetsStatusDot.className = "status-dot offline";
+    cloudStatus.textContent = message || "Saved to Local Storage";
+  }
+}
+
+function initFirebase() {
+  if (typeof firebase === 'undefined') {
+    console.warn("Firebase SDK not loaded, operating in Local Storage mode.");
+    updateCloudStatusUI('offline', 'Saved to Local Storage');
+    return;
+  }
+
+  try {
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    db = firebase.firestore();
+
+    // Enable offline persistence
+    db.enablePersistence({ synchronizeTabs: true }).catch(err => {
+      if (err.code === 'failed-precondition') {
+        console.warn('Firestore persistence warning: Multiple tabs open');
+      } else if (err.code === 'unimplemented') {
+        console.warn('Firestore persistence not supported in this browser');
+      }
+    });
+
+    listenToFirebase();
+  } catch (err) {
+    console.error("Firebase init error:", err);
+    updateCloudStatusUI('offline', 'Firebase Error');
+  }
+}
+
+function listenToFirebase() {
+  if (!db) return;
+  updateCloudStatusUI('syncing', 'Connecting to Cloud...');
+
+  db.collection('tracker').doc('main').onSnapshot((docSnapshot) => {
+    isFirebaseConnected = true;
+    if (docSnapshot.exists) {
+      const cloudData = docSnapshot.data();
+      const cloudTx = cloudData.transactions || [];
+      const cloudInit = cloudData.initialBalances || { "THB": 0 };
+
+      // Case 1: Initial load, cloud exists but has 0 tx, while local has data!
+      if (cloudTx.length === 0 && transactions.length > 0 && isInitialCloudLoad) {
+        isInitialCloudLoad = false;
+        saveToFirebase();
+        showToast("เชื่อมต่อสำเร็จ! สำรองข้อมูลในเครื่องขึ้น Firebase แล้ว", "success");
+        return;
+      }
+
+      isInitialCloudLoad = false;
+
+      // Case 2: Sync cloud data down to local
+      initialBalances = cloudInit;
+      transactions = cloudTx;
+      if (cloudData.lastLoginDate) lastLoginDate = cloudData.lastLoginDate;
+
+      // Save to local storage as mirror without syncing back
+      saveData(false);
+      updateUI();
+      updateCloudStatusUI('online', 'Synced to Firebase Cloud');
+    } else {
+      // Document does not exist yet (brand new Firestore database)
+      isInitialCloudLoad = false;
+      if (transactions.length > 0) {
+        saveToFirebase();
+        showToast("เชื่อมต่อสำเร็จ! สำรองข้อมูลในเครื่องขึ้น Firebase แล้ว", "success");
+      } else {
+        saveToFirebase();
+        updateCloudStatusUI('online', 'Connected to Firebase');
+      }
+    }
+  }, (error) => {
+    console.error("Firestore sync error:", error);
+    isFirebaseConnected = false;
+    updateCloudStatusUI('error', 'Cloud Permission Error');
+    showToast("เชื่อมต่อ Firebase ไม่สำเร็จ (กรุณาตรวจเช็ค Rules ใน Firestore)", "error");
+  });
+}
+
+function saveToFirebase() {
+  if (!db) return;
+  clearTimeout(cloudSyncTimeout);
+  updateCloudStatusUI('syncing', 'Syncing to Cloud...');
+
+  cloudSyncTimeout = setTimeout(() => {
+    db.collection('tracker').doc('main').set({
+      initialBalances: initialBalances,
+      transactions: transactions,
+      lastLoginDate: getTodayDateString(),
+      updatedAt: Date.now()
+    }, { merge: true })
+    .then(() => {
+      isFirebaseConnected = true;
+      updateCloudStatusUI('online', 'Synced to Firebase Cloud');
+    })
+    .catch(err => {
+      console.error("Error saving to Firestore:", err);
+      updateCloudStatusUI('error', 'Sync Failed');
+    });
+  }, 350);
+}
+
+function exportBackupJSON() {
+  const backupData = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    initialBalances: initialBalances,
+    transactions: transactions,
+    lastLoginDate: lastLoginDate
+  };
+  const jsonStr = JSON.stringify(backupData, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const today = getTodayDateString().replace(/ /g, '_');
+  a.href = url;
+  a.download = `MyDailyTracker_Backup_${today}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast("ดาวน์โหลดไฟล์ Backup JSON เรียบร้อยแล้ว", "success");
+}
+
+function handleRestoreJSON(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    try {
+      const parsed = JSON.parse(evt.target.result);
+      if (!parsed || !Array.isArray(parsed.transactions)) {
+        showToast("รูปแบบไฟล์ JSON ไม่ถูกต้อง", "error");
+        return;
+      }
+
+      if (confirm(`พบข้อมูล ${parsed.transactions.length} รายการ คุณต้องการนำเข้าข้อมูลนี้เพื่อแทนที่ข้อมูลปัจจุบันใช่หรือไม่?`)) {
+        initialBalances = parsed.initialBalances || { "THB": 0 };
+        transactions = parsed.transactions;
+        if (parsed.lastLoginDate) lastLoginDate = parsed.lastLoginDate;
+
+        saveData(true);
+        updateUI();
+        showToast(`กู้คืนข้อมูลสำเร็จ ${transactions.length} รายการ และซิงค์ขึ้น Cloud แล้ว!`, "success");
+      }
+    } catch (err) {
+      console.error("Error reading JSON backup:", err);
+      showToast("เกิดข้อผิดพลาดในการอ่านไฟล์ JSON", "error");
+    }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+}
 
 // Initialization
 function init() {
   loadData();
+  initFirebase();
   checkMissingDays();
   renderDate();
   if (dateInput) dateInput.value = getTodayDateString();
@@ -156,7 +347,7 @@ function clearAllData() {
   localStorage.removeItem('tracker_initialBalances');
   localStorage.removeItem('tracker_lastLoginDate');
   localStorage.setItem('tracker_isSeeded', 'true');
-  saveData();
+  saveData(true);
   currentPage = 1;
   currentDailyPage = 1;
   updateUI();
@@ -178,11 +369,15 @@ function loadData() {
   googleSheetUrl = localStorage.getItem('tracker_googleSheetUrl') || "";
 }
 
-function saveData() {
+function saveData(syncCloud = true) {
   localStorage.setItem('tracker_initialBalances', JSON.stringify(initialBalances));
   localStorage.setItem('tracker_transactions', JSON.stringify(transactions));
   localStorage.setItem('tracker_lastLoginDate', getTodayDateString());
   localStorage.setItem('tracker_googleSheetUrl', googleSheetUrl);
+
+  if (syncCloud && db) {
+    saveToFirebase();
+  }
 }
 
 // Custom Toast Alerts
@@ -441,7 +636,9 @@ function updateCurrencyDropdown() {
 function updateUI() {
   const currentBalances = getBalances();
   
-  if (googleSheetUrl && googleSheetUrl.includes("script.google.com")) {
+  if (isFirebaseConnected || (db && typeof firebase !== 'undefined')) {
+    // Status managed dynamically by Firebase listener
+  } else if (googleSheetUrl && googleSheetUrl.includes("script.google.com")) {
     sheetsStatusDot.className = "status-dot online";
     cloudStatus.textContent = "Synced to Google Sheets";
   } else {
@@ -2021,6 +2218,24 @@ function setupEventListeners() {
       showToast("ไม่สามารถคัดลอกลง Clipboard ได้", "error");
     });
   });
+
+  if (backupJsonBtn) {
+    backupJsonBtn.addEventListener('click', () => {
+      closeMobileSidebar();
+      exportBackupJSON();
+    });
+  }
+
+  if (restoreJsonBtn) {
+    restoreJsonBtn.addEventListener('click', () => {
+      closeMobileSidebar();
+      if (restoreFileInput) restoreFileInput.click();
+    });
+  }
+
+  if (restoreFileInput) {
+    restoreFileInput.addEventListener('change', handleRestoreJSON);
+  }
 
   if (clearConfirmInput) {
     clearConfirmInput.addEventListener('input', () => {
