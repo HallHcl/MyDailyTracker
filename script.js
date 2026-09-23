@@ -126,9 +126,6 @@ const pasteImportInput = document.getElementById('paste-import-input');
 const pasteImportBtn = document.getElementById('paste-import-btn');
 const copyScriptCodeBtn = document.getElementById('copy-script-code-btn');
 const scriptCodeSnippet = document.getElementById('script-code-snippet');
-const backupJsonBtn = document.getElementById('backup-json-btn');
-const restoreJsonBtn = document.getElementById('restore-json-btn');
-const restoreFileInput = document.getElementById('restore-file-input');
 
 // Firebase Configuration & Real-Time Sync State
 const firebaseConfig = {
@@ -262,59 +259,6 @@ function saveToFirebase() {
       updateCloudStatusUI('error', 'Sync Failed');
     });
   }, 350);
-}
-
-function exportBackupJSON() {
-  const backupData = {
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    initialBalances: initialBalances,
-    transactions: transactions,
-    lastLoginDate: lastLoginDate
-  };
-  const jsonStr = JSON.stringify(backupData, null, 2);
-  const blob = new Blob([jsonStr], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const today = getTodayDateString().replace(/ /g, '_');
-  a.href = url;
-  a.download = `MyDailyTracker_Backup_${today}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  showToast("ดาวน์โหลดไฟล์ Backup JSON เรียบร้อยแล้ว", "success");
-}
-
-function handleRestoreJSON(e) {
-  const file = e.target.files && e.target.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = function(evt) {
-    try {
-      const parsed = JSON.parse(evt.target.result);
-      if (!parsed || !Array.isArray(parsed.transactions)) {
-        showToast("รูปแบบไฟล์ JSON ไม่ถูกต้อง", "error");
-        return;
-      }
-
-      if (confirm(`พบข้อมูล ${parsed.transactions.length} รายการ คุณต้องการนำเข้าข้อมูลนี้เพื่อแทนที่ข้อมูลปัจจุบันใช่หรือไม่?`)) {
-        initialBalances = parsed.initialBalances || { "THB": 0 };
-        transactions = parsed.transactions;
-        if (parsed.lastLoginDate) lastLoginDate = parsed.lastLoginDate;
-
-        saveData(true);
-        updateUI();
-        showToast(`กู้คืนข้อมูลสำเร็จ ${transactions.length} รายการ และซิงค์ขึ้น Cloud แล้ว!`, "success");
-      }
-    } catch (err) {
-      console.error("Error reading JSON backup:", err);
-      showToast("เกิดข้อผิดพลาดในการอ่านไฟล์ JSON", "error");
-    }
-    e.target.value = '';
-  };
-  reader.readAsText(file);
 }
 
 // Initialization
@@ -2218,24 +2162,6 @@ function setupEventListeners() {
       showToast("ไม่สามารถคัดลอกลง Clipboard ได้", "error");
     });
   });
-
-  if (backupJsonBtn) {
-    backupJsonBtn.addEventListener('click', () => {
-      closeMobileSidebar();
-      exportBackupJSON();
-    });
-  }
-
-  if (restoreJsonBtn) {
-    restoreJsonBtn.addEventListener('click', () => {
-      closeMobileSidebar();
-      if (restoreFileInput) restoreFileInput.click();
-    });
-  }
-
-  if (restoreFileInput) {
-    restoreFileInput.addEventListener('change', handleRestoreJSON);
-  }
 
   if (clearConfirmInput) {
     clearConfirmInput.addEventListener('input', () => {
