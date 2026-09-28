@@ -3,6 +3,8 @@
 ระบบบันทึกรายรับ-รายจ่ายประจำวันสไตล์ **Google Sheets Dark Theme** 
 รองรับหลายสกุลเงิน (Multi-Currency), อัปเดตข้อมูลขึ้น Google Sheets แบบ Real-Time อัตโนมัติ, ติ๊กเลือกหลายรายการลบพร้อมกัน และรองรับการทำงานแบบ Offline PWA
 
+🌐 **ใช้งานออนไลน์ได้ทันที (Live App):** [https://hallhcl.github.io/MyDailyTracker/](https://hallhcl.github.io/MyDailyTracker/)
+
 ---
 
 ## ✨ Features
