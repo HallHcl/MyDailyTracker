@@ -2006,10 +2006,12 @@ function setupEventListeners() {
   saveBalanceBtn.addEventListener('click', saveBalances);
   addCurrencyBtn.addEventListener('click', () => addBalanceInputRow('', 0));
 
-  sheetsBtn.addEventListener('click', () => {
-    closeMobileSidebar();
-    openSheetsModal();
-  });
+  if (sheetsBtn) {
+    sheetsBtn.addEventListener('click', () => {
+      closeMobileSidebar();
+      openSheetsModal();
+    });
+  }
   cancelSheetsBtn.addEventListener('click', () => sheetsModal.classList.add('hidden'));
   saveSheetsBtn.addEventListener('click', saveSheetsUrl);
   
