@@ -142,6 +142,8 @@ let db = null;
 let cloudSyncTimeout = null;
 let isInitialCloudLoad = true;
 let isFirebaseConnected = false;
+let deletedIds = [];
+let localLastClearedAt = 0;
 
 function updateCloudStatusUI(status, message) {
   if (!sheetsStatusDot || !cloudStatus) return;
@@ -195,41 +197,121 @@ function listenToFirebase() {
 
   db.collection('tracker').doc('main').onSnapshot((docSnapshot) => {
     isFirebaseConnected = true;
-    if (docSnapshot.exists) {
-      const cloudData = docSnapshot.data();
-      const cloudTx = cloudData.transactions || [];
-      const cloudInit = cloudData.initialBalances || { "THB": 0 };
 
-      // Case 1: Initial load, cloud exists but has 0 tx, while local has data!
-      if (cloudTx.length === 0 && transactions.length > 0 && isInitialCloudLoad) {
-        isInitialCloudLoad = false;
-        saveToFirebase();
-        showToast("เชื่อมต่อสำเร็จ! สำรองข้อมูลในเครื่องขึ้น Firebase แล้ว", "success");
-        return;
-      }
+    // Ignore local uncommitted writes to prevent echoing
+    if (docSnapshot.metadata && docSnapshot.metadata.hasPendingWrites) {
+      updateCloudStatusUI('syncing', 'Syncing to Cloud...');
+      return;
+    }
 
+    if (!docSnapshot.exists) {
+      // Document does not exist yet on Firestore
       isInitialCloudLoad = false;
+      if (transactions.length > 0 || Object.values(initialBalances).some(v => v > 0)) {
+        saveToFirebase();
+        showToast("เชื่อมต่อสำเร็จ! สำรองข้อมูลในเครื่องขึ้น Cloud แล้ว", "success");
+      } else {
+        updateCloudStatusUI('online', 'Connected to Firebase Cloud');
+      }
+      return;
+    }
 
-      // Case 2: Sync cloud data down to local
+    const cloudData = docSnapshot.data() || {};
+    const cloudTx = Array.isArray(cloudData.transactions) ? cloudData.transactions : [];
+    const cloudInit = cloudData.initialBalances || { "THB": 0 };
+    const cloudClearedAt = cloudData.clearedAt || 0;
+    const cloudDeletedIds = Array.isArray(cloudData.deletedIds) ? cloudData.deletedIds : [];
+
+    // Combine and track deleted IDs to prevent deleted items from coming back
+    const combinedDeletedSet = new Set([...deletedIds, ...cloudDeletedIds]);
+    deletedIds = Array.from(combinedDeletedSet).slice(-300);
+    localStorage.setItem('tracker_deletedIds', JSON.stringify(deletedIds));
+
+    // Handle case where database was explicitly cleared on another device or previously
+    if (cloudClearedAt && cloudClearedAt > localLastClearedAt && cloudTx.length === 0) {
+      localLastClearedAt = cloudClearedAt;
+      localStorage.setItem('tracker_lastClearedAt', String(cloudClearedAt));
+      transactions = [];
       initialBalances = cloudInit;
-      transactions = cloudTx;
-      if (cloudData.lastLoginDate) lastLoginDate = cloudData.lastLoginDate;
-
-      // Save to local storage as mirror without syncing back
+      isInitialCloudLoad = false;
       saveData(false);
       updateUI();
       updateCloudStatusUI('online', 'Synced to Firebase Cloud');
-    } else {
-      // Document does not exist yet (brand new Firestore database)
+      return;
+    }
+
+    // Initial load handler: Smart merge without data loss
+    if (isInitialCloudLoad) {
       isInitialCloudLoad = false;
-      if (transactions.length > 0) {
-        saveToFirebase();
-        showToast("เชื่อมต่อสำเร็จ! สำรองข้อมูลในเครื่องขึ้น Firebase แล้ว", "success");
-      } else {
-        saveToFirebase();
-        updateCloudStatusUI('online', 'Connected to Firebase');
+
+      // Scenario A: Both local and cloud have transactions -> Smart Merge without data loss!
+      if (transactions.length > 0 && cloudTx.length > 0) {
+        const txMap = new Map();
+        
+        // 1. Add cloud transactions (filtering out known deleted items)
+        cloudTx.forEach(tx => {
+          if (tx && tx.id && !combinedDeletedSet.has(tx.id)) {
+            txMap.set(tx.id, tx);
+          }
+        });
+
+        // 2. Add local transactions (if missing in cloud and not deleted)
+        let hasNewLocal = false;
+        transactions.forEach(tx => {
+          if (tx && tx.id && !txMap.has(tx.id) && !combinedDeletedSet.has(tx.id)) {
+            txMap.set(tx.id, tx);
+            hasNewLocal = true;
+          }
+        });
+
+        // Sort chronologically (newest first)
+        transactions = Array.from(txMap.values()).sort((a, b) => {
+          const dateDiff = (b.date || '').localeCompare(a.date || '');
+          if (dateDiff !== 0) return dateDiff;
+          return (b.timestamp || 0) - (a.timestamp || 0);
+        });
+
+        // Merge initial balances (keep non-zero values)
+        initialBalances = { ...cloudInit, ...initialBalances };
+
+        saveData(hasNewLocal);
+        updateUI();
+        updateCloudStatusUI('online', 'Synced to Firebase Cloud');
+        if (hasNewLocal) {
+          showToast("เชื่อมต่อสำเร็จ! ผสานข้อมูลในเครื่องกับ Cloud เรียบร้อย", "success");
+        }
+        return;
+      }
+
+      // Scenario B: Cloud has data, local was empty (e.g. fresh GitHub Pages deploy or new device)
+      if (cloudTx.length > 0 && transactions.length === 0) {
+        transactions = cloudTx.filter(tx => tx && tx.id && !combinedDeletedSet.has(tx.id));
+        initialBalances = cloudInit;
+        if (cloudData.lastLoginDate) lastLoginDate = cloudData.lastLoginDate;
+        saveData(false);
+        updateUI();
+        updateCloudStatusUI('online', 'Synced to Firebase Cloud');
+        return;
+      }
+
+      // Scenario C: Local has data, cloud was empty
+      if (transactions.length > 0 && cloudTx.length === 0) {
+        if (!cloudClearedAt || (transactions[0] && (transactions[0].timestamp || 0) > cloudClearedAt)) {
+          saveToFirebase();
+          showToast("เชื่อมต่อสำเร็จ! สำรองข้อมูลในเครื่องขึ้น Cloud แล้ว", "success");
+          return;
+        }
       }
     }
+
+    // Steady state: live sync from cloud
+    transactions = cloudTx.filter(tx => tx && tx.id && !combinedDeletedSet.has(tx.id));
+    initialBalances = cloudInit;
+    if (cloudData.lastLoginDate) lastLoginDate = cloudData.lastLoginDate;
+
+    saveData(false);
+    updateUI();
+    updateCloudStatusUI('online', 'Synced to Firebase Cloud');
   }, (error) => {
     console.error("Firestore sync error:", error);
     isFirebaseConnected = false;
@@ -238,18 +320,27 @@ function listenToFirebase() {
   });
 }
 
-function saveToFirebase() {
+function saveToFirebase(isExplicitClear = false) {
   if (!db) return;
   clearTimeout(cloudSyncTimeout);
   updateCloudStatusUI('syncing', 'Syncing to Cloud...');
 
+  const payload = {
+    initialBalances: initialBalances,
+    transactions: transactions,
+    deletedIds: deletedIds.slice(-300),
+    lastLoginDate: getTodayDateString(),
+    updatedAt: Date.now()
+  };
+
+  if (isExplicitClear) {
+    localLastClearedAt = Date.now();
+    payload.clearedAt = localLastClearedAt;
+    localStorage.setItem('tracker_lastClearedAt', String(localLastClearedAt));
+  }
+
   cloudSyncTimeout = setTimeout(() => {
-    db.collection('tracker').doc('main').set({
-      initialBalances: initialBalances,
-      transactions: transactions,
-      lastLoginDate: getTodayDateString(),
-      updatedAt: Date.now()
-    }, { merge: true })
+    db.collection('tracker').doc('main').set(payload, { merge: true })
     .then(() => {
       isFirebaseConnected = true;
       updateCloudStatusUI('online', 'Synced to Firebase Cloud');
@@ -258,8 +349,22 @@ function saveToFirebase() {
       console.error("Error saving to Firestore:", err);
       updateCloudStatusUI('error', 'Sync Failed');
     });
-  }, 350);
+  }, 250);
 }
+
+// Flush pending sync immediately on window unload
+window.addEventListener('beforeunload', () => {
+  if (cloudSyncTimeout && db) {
+    clearTimeout(cloudSyncTimeout);
+    db.collection('tracker').doc('main').set({
+      initialBalances: initialBalances,
+      transactions: transactions,
+      deletedIds: deletedIds.slice(-300),
+      lastLoginDate: getTodayDateString(),
+      updatedAt: Date.now()
+    }, { merge: true });
+  }
+});
 
 // Initialization
 function init() {
@@ -287,11 +392,18 @@ function init() {
 function clearAllData() {
   transactions = [];
   initialBalances = { "THB": 0 };
+  deletedIds = [];
+  localLastClearedAt = Date.now();
   localStorage.removeItem('tracker_transactions');
   localStorage.removeItem('tracker_initialBalances');
   localStorage.removeItem('tracker_lastLoginDate');
+  localStorage.removeItem('tracker_deletedIds');
+  localStorage.setItem('tracker_lastClearedAt', String(localLastClearedAt));
   localStorage.setItem('tracker_isSeeded', 'true');
-  saveData(true);
+  saveData(false);
+  if (db) {
+    saveToFirebase(true); // explicit clear
+  }
   currentPage = 1;
   currentDailyPage = 1;
   updateUI();
@@ -311,6 +423,13 @@ function loadData() {
   transactions = savedTransactions || [];
   lastLoginDate = localStorage.getItem('tracker_lastLoginDate');
   googleSheetUrl = localStorage.getItem('tracker_googleSheetUrl') || "";
+
+  try {
+    deletedIds = JSON.parse(localStorage.getItem('tracker_deletedIds')) || [];
+  } catch (e) {
+    deletedIds = [];
+  }
+  localLastClearedAt = parseInt(localStorage.getItem('tracker_lastClearedAt') || '0', 10);
 }
 
 function saveData(syncCloud = true) {
@@ -318,9 +437,10 @@ function saveData(syncCloud = true) {
   localStorage.setItem('tracker_transactions', JSON.stringify(transactions));
   localStorage.setItem('tracker_lastLoginDate', getTodayDateString());
   localStorage.setItem('tracker_googleSheetUrl', googleSheetUrl);
+  localStorage.setItem('tracker_deletedIds', JSON.stringify(deletedIds.slice(-300)));
 
   if (syncCloud && db) {
-    saveToFirebase();
+    saveToFirebase(false);
   }
 }
 
@@ -1103,6 +1223,10 @@ function confirmDeleteTransaction() {
   if (!pendingDeleteIds || pendingDeleteIds.length === 0) return;
 
   const count = pendingDeleteIds.length;
+  // Track deleted IDs to prevent accidental resurrection from cloud merge
+  deletedIds = Array.from(new Set([...deletedIds, ...pendingDeleteIds])).slice(-300);
+  localStorage.setItem('tracker_deletedIds', JSON.stringify(deletedIds));
+
   transactions = transactions.filter(t => !pendingDeleteIds.includes(t.id));
   
   pendingDeleteIds.forEach(id => selectedTxIds.delete(id));
@@ -2205,7 +2329,8 @@ function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('./sw.js').then(registration => {
-        console.log('SW registered: ', registration);
+        registration.update();
+        console.log('SW registered and checked for updates: ', registration);
       }).catch(registrationError => {
         console.log('SW registration failed: ', registrationError);
       });
