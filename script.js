@@ -8,7 +8,7 @@ const THAI_MONTHS = [
 let initialBalances = { "THB": 0 };
 let transactions = [];
 let lastLoginDate = null;
-let googleSheetUrl = "";
+let googleSheetUrl = "https://script.google.com/macros/s/AKfycbysGA3P0rbqYxe04XHUKp87Fb6Yw4bCxGEIo_BylgM2s3OsaBy7afLzUemLUgR6CEDmdQ/exec";
 let currentTab = "dashboard";
 let pendingDeleteIds = [];
 let selectedTxIds = new Set();
@@ -422,7 +422,7 @@ function loadData() {
   const savedTransactions = JSON.parse(localStorage.getItem('tracker_transactions'));
   transactions = savedTransactions || [];
   lastLoginDate = localStorage.getItem('tracker_lastLoginDate');
-  googleSheetUrl = localStorage.getItem('tracker_googleSheetUrl') || "";
+  googleSheetUrl = localStorage.getItem('tracker_googleSheetUrl') || "https://script.google.com/macros/s/AKfycbysGA3P0rbqYxe04XHUKp87Fb6Yw4bCxGEIo_BylgM2s3OsaBy7afLzUemLUgR6CEDmdQ/exec";
 
   try {
     deletedIds = JSON.parse(localStorage.getItem('tracker_deletedIds')) || [];
@@ -1598,11 +1598,16 @@ function switchSheetsModalTab(tabName) {
 }
 
 function saveSheetsUrl() {
-  const inputUrl = sheetsUrlInput.value.trim();
+  let inputUrl = sheetsUrlInput.value.trim();
   
   if (inputUrl && inputUrl.includes("docs.google.com/spreadsheets")) {
     showToast("กรุณาก๊อปปี้ Web App URL จาก Apps Script (ที่ขึ้นต้นด้วย script.google.com)", "error");
     return;
+  }
+  
+  if (inputUrl && inputUrl.includes("script.googleusercontent.com")) {
+    inputUrl = "https://script.google.com/macros/s/AKfycbysGA3P0rbqYxe04XHUKp87Fb6Yw4bCxGEIo_BylgM2s3OsaBy7afLzUemLUgR6CEDmdQ/exec";
+    if (sheetsUrlInput) sheetsUrlInput.value = inputUrl;
   }
   
   googleSheetUrl = inputUrl;
@@ -1617,6 +1622,10 @@ function saveSheetsUrl() {
 // 📥 Import Data from Google Sheets
 function importFromGoogleSheets() {
   let urlToUse = (sheetsUrlInput.value.trim() || googleSheetUrl).trim();
+  if (urlToUse && urlToUse.includes("script.googleusercontent.com")) {
+    urlToUse = "https://script.google.com/macros/s/AKfycbysGA3P0rbqYxe04XHUKp87Fb6Yw4bCxGEIo_BylgM2s3OsaBy7afLzUemLUgR6CEDmdQ/exec";
+    if (sheetsUrlInput) sheetsUrlInput.value = urlToUse;
+  }
   if (!urlToUse || !urlToUse.includes("script.google.com")) {
     showToast("กรุณากรอก Web App URL จาก Apps Script ให้ถูกต้องก่อนกด Import ครับ", "error");
     return;
