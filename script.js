@@ -2060,16 +2060,18 @@ function setupEventListeners() {
     }, 1500);
   });
 
-  copyBtn.addEventListener('click', () => {
-    closeMobileSidebar();
-    const text = formatClipboardText();
-    navigator.clipboard.writeText(text).then(() => {
-      showToast("คัดลอกข้อความลง Clipboard เรียบร้อยแล้ว", "info");
-    }).catch(err => {
-      console.error('Could not copy text: ', err);
-      showToast("ไม่สามารถคัดลอกลง Clipboard ได้", "error");
+  if (copyBtn) {
+    copyBtn.addEventListener('click', () => {
+      closeMobileSidebar();
+      const text = formatClipboardText();
+      navigator.clipboard.writeText(text).then(() => {
+        showToast("คัดลอกข้อความลง Clipboard เรียบร้อยแล้ว", "info");
+      }).catch(err => {
+        console.error('Could not copy text: ', err);
+        showToast("ไม่สามารถคัดลอกลง Clipboard ได้", "error");
+      });
     });
-  });
+  }
 
   if (clearConfirmInput) {
     clearConfirmInput.addEventListener('input', () => {
