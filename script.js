@@ -16,8 +16,8 @@ const firebaseConfig = {
 };
 
 const ACCOUNTS = {
-  'account_1': { id: 'account_1', name: '👤 บัญชีของฉัน' },
-  'account_2': { id: 'account_2', name: '👥 บัญชีเพื่อน' }
+  'account_1': { id: 'account_1', name: '🏦 Bank1' },
+  'account_2': { id: 'account_2', name: '🏦 Bank2' }
 };
 
 let db = null;
@@ -179,14 +179,18 @@ function getStorageKey(key) {
 }
 
 function checkFreshStart() {
-  if (!localStorage.getItem('tracker_firebase_fresh_clean_v1')) {
-    // Clear legacy monolithic mock data for clean start
-    localStorage.removeItem('tracker_transactions');
-    localStorage.removeItem('tracker_initialBalances');
-    localStorage.removeItem('tracker_isSeeded');
-    localStorage.removeItem('tracker_deletedIds');
-    localStorage.removeItem('tracker_lastClearedAt');
-    localStorage.setItem('tracker_firebase_fresh_clean_v1', 'true');
+  if (!localStorage.getItem('tracker_fresh_bank1_bank2_v2')) {
+    // Purge ALL tracker_* keys in localStorage so Bank1 and Bank2 start 100% clean
+    try {
+      Object.keys(localStorage).forEach(k => {
+        if (k.startsWith('tracker_')) {
+          localStorage.removeItem(k);
+        }
+      });
+    } catch (e) {
+      console.warn('Clear localStorage error:', e);
+    }
+    localStorage.setItem('tracker_fresh_bank1_bank2_v2', 'true');
   }
 }
 
