@@ -125,6 +125,7 @@ const dashBalances = document.getElementById('dash-balances');
 const dashDailyBreakdown = document.getElementById('dash-daily-breakdown');
 const dashTodayStats = document.getElementById('dash-today-stats');
 const dashChartsContainer = document.getElementById('dash-charts-container');
+const chartCurrencySelect = document.getElementById('chart-currency-select');
 const dashActivityStats = document.getElementById('dash-activity-stats');
 const toastContainer = document.getElementById('toast-container');
 
@@ -1150,6 +1151,132 @@ function renderTransactionList(filteredTxs) {
   updateSelectionUI();
 }
 
+let chartSelectedCurrency = 'THB';
+
+function formatShortNumber(num) {
+  const abs = Math.abs(num);
+  if (abs >= 1000000) {
+    return (num / 1000000).toFixed(1) + 'M';
+  }
+  if (abs >= 1000) {
+    return (num / 1000).toFixed(1) + 'k';
+  }
+  return formatCurrency(num);
+}
+
+function renderMonthlyComparisonChart(allCurrencies) {
+  if (!dashChartsContainer) return;
+
+  // 1. Available currencies list
+  const currList = Array.from(allCurrencies || []);
+  if (currList.length === 0) currList.push("THB");
+
+  if (!currList.includes(chartSelectedCurrency)) {
+    chartSelectedCurrency = currList[0];
+  }
+
+  // 2. Populate currency select dropdown
+  if (chartCurrencySelect) {
+    chartCurrencySelect.innerHTML = '';
+    currList.forEach(curr => {
+      const opt = document.createElement('option');
+      opt.value = curr;
+      opt.textContent = curr;
+      if (curr === chartSelectedCurrency) opt.selected = true;
+      chartCurrencySelect.appendChild(opt);
+    });
+
+    chartCurrencySelect.onchange = (e) => {
+      chartSelectedCurrency = e.target.value;
+      renderMonthlyComparisonChart(allCurrencies);
+    };
+  }
+
+  // 3. Generate 6 months list (from 5 months ago up to current month)
+  const now = new Date();
+  const monthsList = [];
+  const thaiShorts = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const year = d.getFullYear();
+    const mIdx = d.getMonth();
+    const ymKey = `${year}-${String(mIdx + 1).padStart(2, '0')}`;
+    monthsList.push({
+      key: ymKey,
+      label: `${thaiShorts[mIdx]} ${String(year).slice(-2)}`,
+      fullMonth: `${THAI_MONTHS[mIdx]} ${year}`,
+      income: 0,
+      expense: 0
+    });
+  }
+
+  // 4. Aggregate active account transactions for selected currency
+  transactions.forEach(t => {
+    if (t.isDummy || t.currency !== chartSelectedCurrency || !t.date) return;
+    const ym = t.date.substring(0, 7);
+    const mObj = monthsList.find(m => m.key === ym);
+    if (mObj) {
+      const amt = Number(t.amount) || 0;
+      if (t.type === 'income') mObj.income += amt;
+      else if (t.type === 'expense') mObj.expense += amt;
+    }
+  });
+
+  // 5. Determine maximum value for proportional scaling
+  let maxVal = 0;
+  monthsList.forEach(m => {
+    if (m.income > maxVal) maxVal = m.income;
+    if (m.expense > maxVal) maxVal = m.expense;
+  });
+  if (maxVal === 0) maxVal = 1;
+
+  // 6. Build chart HTML
+  let colsHtml = '';
+  monthsList.forEach(m => {
+    const incPct = m.income > 0 ? Math.max(8, Math.round((m.income / maxVal) * 100)) : 0;
+    const expPct = m.expense > 0 ? Math.max(8, Math.round((m.expense / maxVal) * 100)) : 0;
+    const net = m.income - m.expense;
+
+    let netBadge = `<div class="month-net-badge zero" title="สุทธิ: 0 ${chartSelectedCurrency}">0</div>`;
+    if (net > 0) {
+      netBadge = `<div class="month-net-badge positive" title="สุทธิ: +${formatCurrency(net)} ${chartSelectedCurrency}">+${formatShortNumber(net)}</div>`;
+    } else if (net < 0) {
+      netBadge = `<div class="month-net-badge negative" title="สุทธิ: -${formatCurrency(Math.abs(net))} ${chartSelectedCurrency}">-${formatShortNumber(Math.abs(net))}</div>`;
+    }
+
+    colsHtml += `
+      <div class="monthly-bar-col">
+        <div class="bars-pair-container">
+          <div class="bar-col-track">
+            <div class="bar-col-fill income" style="height: ${incPct}%;">
+              <span class="bar-tooltip">${m.label} รับ: +${formatCurrency(m.income)}</span>
+            </div>
+          </div>
+          <div class="bar-col-track">
+            <div class="bar-col-fill expense" style="height: ${expPct}%;">
+              <span class="bar-tooltip">${m.label} จ่าย: -${formatCurrency(m.expense)}</span>
+            </div>
+          </div>
+        </div>
+        <div class="month-col-label" title="${m.fullMonth}">${m.label}</div>
+        ${netBadge}
+      </div>
+    `;
+  });
+
+  dashChartsContainer.innerHTML = `
+    <div class="monthly-chart-wrapper">
+      <div class="chart-legend">
+        <div class="legend-item"><span class="legend-dot income"></span> รายรับ (Income)</div>
+        <div class="legend-item"><span class="legend-dot expense"></span> รายจ่าย (Expense)</div>
+      </div>
+      <div class="monthly-bars-grid">
+        ${colsHtml}
+      </div>
+    </div>
+  `;
+}
+
 function renderDashboardView(selectedYM, filteredTxs) {
   const currentBalances = getBalances();
   
@@ -1323,40 +1450,7 @@ function renderDashboardView(selectedYM, filteredTxs) {
     <div style="display: flex; justify-content: space-between; font-size: 0.9rem; font-weight: 500; margin-top: 6px;"><span>Total Entries:</span> <strong>${filteredTxs.length} entries</strong></div>
   `;
   
-  dashChartsContainer.innerHTML = '';
-  if (allCurrencies.size === 0) {
-    dashChartsContainer.innerHTML = '<div class="empty-state"><p>No transaction history to chart.</p></div>';
-  } else {
-    allCurrencies.forEach(curr => {
-      const inc = periodIncome[curr] || 0;
-      const exp = periodExpense[curr] || 0;
-      const maxVal = Math.max(inc, exp, 1);
-      
-      const incPct = Math.min(100, Math.round((inc / maxVal) * 100));
-      const expPct = Math.min(100, Math.round((exp / maxVal) * 100));
-      
-      const chartGroup = document.createElement('div');
-      chartGroup.className = 'chart-currency-group';
-      chartGroup.innerHTML = `
-        <div class="chart-currency-title">Currency: ${curr}</div>
-        <div class="chart-bar-row">
-          <span class="chart-label">Income</span>
-          <div class="chart-track">
-            <div class="chart-fill income" style="width: ${incPct}%;"></div>
-          </div>
-          <span class="chart-val" style="color: var(--income-color);">+${formatCurrency(inc)}</span>
-        </div>
-        <div class="chart-bar-row">
-          <span class="chart-label">Expense</span>
-          <div class="chart-track">
-            <div class="chart-fill expense" style="width: ${expPct}%;"></div>
-          </div>
-          <span class="chart-val" style="color: var(--expense-color);">-${formatCurrency(exp)}</span>
-        </div>
-      `;
-      dashChartsContainer.appendChild(chartGroup);
-    });
-  }
+  renderMonthlyComparisonChart(allCurrencies);
   
   const totalEntries = transactions.filter(t => !t.isDummy).length;
   const uniqueDays = new Set(transactions.map(t => t.date)).size;

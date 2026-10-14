@@ -175,9 +175,15 @@
               <div id="dash-today-stats"></div>
             </div>
 
-            <!-- Income vs Expense Breakdown -->
+            <!-- 6-Month Comparison Bar Chart -->
             <div class="dash-card">
-              <h2 class="dash-card-title">⚖️ Income vs Expense Breakdown</h2>
+              <div class="dash-card-header-row">
+                <h2 class="dash-card-title">📊 สรุปย้อนหลัง 6 เดือน</h2>
+                <div class="chart-currency-select-wrapper">
+                  <label for="chart-currency-select" class="chart-curr-label">สกุลเงิน:</label>
+                  <select id="chart-currency-select" class="chart-currency-select" aria-label="Select currency for chart"></select>
+                </div>
+              </div>
               <div id="dash-charts-container" class="charts-list"></div>
             </div>
 
