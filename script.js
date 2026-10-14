@@ -29,7 +29,7 @@ let isFirebaseConnected = false;
 let initialBalances = { "THB": 0 };
 let transactions = [];
 let lastLoginDate = null;
-let googleSheetUrl = "https://script.google.com/macros/s/AKfycbysGA3P0rbqYxe04XHUKp87Fb6Yw4bCxGEIo_BylgM2s3OsaBy7afLzUemLUgR6CEDmdQ/exec";
+let googleSheetUrl = "";
 let currentTab = "dashboard";
 let pendingDeleteIds = [];
 let selectedTxIds = new Set();
@@ -45,7 +45,6 @@ let currentDailyPage = 1;
 const DAILY_ITEMS_PER_PAGE = 5;
 
 // DOM Elements
-const accountSelect = document.getElementById('account-select');
 const sidebarAcc1 = document.getElementById('sidebar-acc-1');
 const sidebarAcc2 = document.getElementById('sidebar-acc-2');
 const dateDisplay = document.getElementById('current-date');
@@ -222,9 +221,6 @@ function saveData() {
 }
 
 function updateAccountUI() {
-  if (accountSelect) {
-    accountSelect.value = currentAccountId;
-  }
   if (sidebarAcc1 && sidebarAcc2) {
     sidebarAcc1.classList.toggle('active', currentAccountId === 'account_1');
     sidebarAcc2.classList.toggle('active', currentAccountId === 'account_2');
@@ -652,8 +648,6 @@ function updateUI() {
   
   if (isFirebaseConnected) {
     updateCloudStatusUI('online', `Synced: ${ACCOUNTS[currentAccountId]?.name || currentAccountId}`);
-  } else if (googleSheetUrl && googleSheetUrl.includes("script.google.com")) {
-    updateCloudStatusUI('online', 'Connected to Cloud');
   } else {
     updateCloudStatusUI('offline', 'Saved to Local Storage');
   }
@@ -1133,9 +1127,6 @@ function handleTransaction(type) {
   updateUI();
   
   saveToFirestore();
-  if (googleSheetUrl && googleSheetUrl.includes("script.google.com")) {
-    sendToGoogleSheets({ action: 'add', transaction: tx });
-  }
   showToast(`บันทึก ${type === 'income' ? 'รายรับ' : 'รายจ่าย'} ${formatCurrency(amount)} ${currStr} แล้ว`, "success");
   
   amountInput.value = '';
@@ -1187,9 +1178,6 @@ function confirmDeleteTransaction() {
   updateUI();
   
   saveToFirestore();
-  if (googleSheetUrl && googleSheetUrl.includes("script.google.com")) {
-    sendToGoogleSheets({ action: 'sync_all', transactions: transactions });
-  }
   showToast(count > 1 ? `ลบ ${count} รายการที่เลือกเรียบร้อยแล้ว` : "ลบรายการเรียบร้อยแล้ว", "info");
 
   confirmDeleteModal.classList.add('hidden');
@@ -1232,9 +1220,6 @@ function saveEditTransaction() {
   editTxModal.classList.add('hidden');
   
   saveToFirestore();
-  if (googleSheetUrl && googleSheetUrl.includes("script.google.com")) {
-    sendToGoogleSheets({ action: 'sync_all', transactions: transactions });
-  }
   showToast("แก้ไขรายการเรียบร้อยแล้ว", "success");
 }
 
@@ -1792,9 +1777,8 @@ function fetchGoogleSheetsData(options = {}) {
 
 // Helper Wrappers for Auto & Manual Sync
 function autoSyncGoogleSheets() {
-  if (!navigator.onLine) return;
-  if (!googleSheetUrl || !googleSheetUrl.includes("script.google.com")) return;
-  fetchGoogleSheetsData({ silent: true, source: 'auto' });
+  // Completely disabled in favor of Firebase Firestore Realtime sync
+  return;
 }
 
 function importFromGoogleSheets() {
@@ -2318,13 +2302,7 @@ function setupEventListeners() {
     }, 1500);
   });
 
-  // Multi-Account Switcher Events
-  if (accountSelect) {
-    accountSelect.addEventListener('change', (e) => {
-      switchAccount(e.target.value);
-    });
-  }
-
+  // Multi-Account Switcher Events (Sidebar)
   if (sidebarAcc1) {
     sidebarAcc1.addEventListener('click', () => {
       closeMobileSidebar();
@@ -2338,25 +2316,6 @@ function setupEventListeners() {
       switchAccount('account_2');
     });
   }
-
-  // Auto-sync when user switches back to tab or focuses window
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      if (Date.now() - lastSyncTimestamp > 20000) {
-        autoSyncGoogleSheets();
-      }
-    }
-  });
-
-  window.addEventListener('focus', () => {
-    if (Date.now() - lastSyncTimestamp > 20000) {
-      autoSyncGoogleSheets();
-    }
-  });
-
-  window.addEventListener('online', () => {
-    autoSyncGoogleSheets();
-  });
 
   if (copyBtn) {
     copyBtn.addEventListener('click', () => {
