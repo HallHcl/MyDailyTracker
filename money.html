@@ -5,8 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
   <title>My Daily Tracker - Financial Dashboard</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <link rel="apple-touch-icon" href="favicon.svg">
-  <link rel="stylesheet" href="style.css?v=20261014_2">
+  <link rel="stylesheet" href="css/theme.css?v=20261014_3">
+  <link rel="stylesheet" href="css/layout.css?v=20261014_3">
+  <link rel="stylesheet" href="css/components.css?v=20261014_3">
+  <link rel="stylesheet" href="style.css?v=20261014_3">
   <link rel="manifest" href="manifest.json">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <meta name="theme-color" content="#10B981">
@@ -170,13 +172,19 @@
             </div>
 
             <!-- Period Stats Overview -->
-            <div class="dash-card">
+            <div class="dash-card full-width">
               <h2 class="dash-card-title">📈 Period Stats Overview</h2>
               <div id="dash-today-stats"></div>
             </div>
 
-            <!-- 6-Month Comparison Bar Chart -->
-            <div class="dash-card">
+            <!-- All Time Activity Stats -->
+            <div class="dash-card full-width">
+              <h2 class="dash-card-title">📋 Activity Log Stats</h2>
+              <div id="dash-activity-stats"></div>
+            </div>
+
+            <!-- 6-Month Comparison Bar Chart (Bottom-most Card) -->
+            <div class="dash-card full-width">
               <div class="dash-card-header-row">
                 <h2 class="dash-card-title">📊 สรุปย้อนหลัง 6 เดือน</h2>
                 <div id="chart-currency-pills-container" class="chart-currency-pills-container">
@@ -184,12 +192,6 @@
                 </div>
               </div>
               <div id="dash-charts-container" class="charts-list"></div>
-            </div>
-
-            <!-- All Time Activity Stats -->
-            <div class="dash-card full-width">
-              <h2 class="dash-card-title">📋 Activity Log Stats</h2>
-              <div id="dash-activity-stats"></div>
             </div>
 
           </div>
@@ -495,6 +497,6 @@
   <!-- Firebase SDKs (Compat v10.8.0 for seamless Vanilla JS) -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-  <script src="script.js?v=20261014_2"></script>
+  <script src="script.js?v=20261014_3"></script>
 </body>
 </html>

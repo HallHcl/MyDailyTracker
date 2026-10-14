@@ -1249,15 +1249,13 @@ function renderMonthlyComparisonChart(allCurrencies) {
     colsHtml += `
       <div class="monthly-bar-col">
         <div class="bars-pair-container">
-          <div class="bar-col-track">
-            <div class="bar-col-fill income" style="height: ${incPct}%;">
-              <span class="bar-tooltip">${m.label} รับ: +${formatCurrency(m.income)}</span>
-            </div>
+          <div class="bar-col-track" title="${m.label} รับ: +${formatCurrency(m.income)} ${chartSelectedCurrency}">
+            <div class="bar-col-fill income" style="height: ${incPct}%;"></div>
+            <span class="bar-tooltip">${m.label} รับ: +${formatCurrency(m.income)}</span>
           </div>
-          <div class="bar-col-track">
-            <div class="bar-col-fill expense" style="height: ${expPct}%;">
-              <span class="bar-tooltip">${m.label} จ่าย: -${formatCurrency(m.expense)}</span>
-            </div>
+          <div class="bar-col-track" title="${m.label} จ่าย: -${formatCurrency(m.expense)} ${chartSelectedCurrency}">
+            <div class="bar-col-fill expense" style="height: ${expPct}%;"></div>
+            <span class="bar-tooltip">${m.label} จ่าย: -${formatCurrency(m.expense)}</span>
           </div>
         </div>
         <div class="month-col-label" title="${m.fullMonth}">${m.label}</div>
@@ -1448,18 +1446,34 @@ function renderDashboardView(selectedYM, filteredTxs) {
 
   // 3. Stats & Charts
   dashTodayStats.innerHTML = `
-    <div style="display: flex; justify-content: space-between; font-size: 0.9rem; font-weight: 500;"><span>Selected Period:</span> <strong>${getYearMonthLabel(selectedYM)}</strong></div>
-    <div style="display: flex; justify-content: space-between; font-size: 0.9rem; font-weight: 500; margin-top: 6px;"><span>Total Entries:</span> <strong>${filteredTxs.length} entries</strong></div>
+    <div class="dash-stats-horizontal-grid">
+      <div class="dash-stat-item">
+        <span class="dash-stat-label">ช่วงเวลาที่เลือก (Selected Period)</span>
+        <span class="dash-stat-value">${getYearMonthLabel(selectedYM)}</span>
+      </div>
+      <div class="dash-stat-item">
+        <span class="dash-stat-label">จำนวนรายการในรอบ (Period Entries)</span>
+        <span class="dash-stat-value">${filteredTxs.length} รายการ</span>
+      </div>
+    </div>
   `;
-  
-  renderMonthlyComparisonChart(allCurrencies);
   
   const totalEntries = transactions.filter(t => !t.isDummy).length;
   const uniqueDays = new Set(transactions.map(t => t.date)).size;
   dashActivityStats.innerHTML = `
-    <div style="display: flex; justify-content: space-between; font-size: 0.9rem; font-weight: 500;"><span>Total Logged Days:</span> <strong>${uniqueDays} days</strong></div>
-    <div style="display: flex; justify-content: space-between; font-size: 0.9rem; font-weight: 500; margin-top: 6px;"><span>Total Lifetime Records:</span> <strong>${totalEntries} entries</strong></div>
+    <div class="dash-stats-horizontal-grid">
+      <div class="dash-stat-item">
+        <span class="dash-stat-label">จำนวนวันที่บันทึก (Total Logged Days)</span>
+        <span class="dash-stat-value">${uniqueDays} วัน</span>
+      </div>
+      <div class="dash-stat-item">
+        <span class="dash-stat-label">บันทึกทั้งหมดตั้งแต่เริ่ม (Lifetime Records)</span>
+        <span class="dash-stat-value">${totalEntries} รายการ</span>
+      </div>
+    </div>
   `;
+
+  renderMonthlyComparisonChart(allCurrencies);
 }
 
 // Logic: Add Transaction with Anti-Double-Submit Lock
