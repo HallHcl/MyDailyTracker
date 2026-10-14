@@ -36,15 +36,13 @@
 
       <!-- Active Account Switcher -->
       <div class="sidebar-nav-group">
-        <div class="sidebar-label">ACTIVE ACCOUNT</div>
-        <button id="sidebar-acc-1" class="sidebar-nav-btn active">
-          <span class="icon">🏦</span>
-          <span>Bank1</span>
-        </button>
-        <button id="sidebar-acc-2" class="sidebar-nav-btn">
-          <span class="icon">🏦</span>
-          <span>Bank2</span>
-        </button>
+        <div class="sidebar-label-row">
+          <div class="sidebar-label" style="padding-left: 0; padding-right: 0;">ACTIVE ACCOUNT</div>
+          <button id="add-bank-btn" class="btn-add-bank-inline" type="button" title="เพิ่ม Bank ใหม่">+ เพิ่ม</button>
+        </div>
+        <div id="sidebar-banks-list" class="sidebar-banks-list">
+          <!-- Dynamically injected bank accounts -->
+        </div>
       </div>
 
       <!-- Main Navigation Menu -->
@@ -429,6 +427,62 @@
       <div class="modal-actions">
         <button id="cancel-sheets-btn" class="btn-secondary" type="button">Close</button>
         <button id="save-sheets-btn" class="btn-primary income" type="button">Save URL</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Bank Modal -->
+  <div id="add-bank-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>➕ เพิ่ม Bank ใหม่</h3>
+        <p>ระบุชื่อบัญชีธนาคารใหม่ที่ต้องการเพิ่ม (ข้อมูลจะ Sync บน Cloud อัตโนมัติ)</p>
+      </div>
+      <div class="modal-body" style="display: flex; flex-direction: column; gap: 12px;">
+        <div class="input-group">
+          <label for="add-bank-name-input" class="input-label">ชื่อ Bank / บัญชี</label>
+          <input type="text" id="add-bank-name-input" class="input-field" placeholder="เช่น SCB, KBank, BBL" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="cancel-add-bank-btn" class="btn-secondary" type="button">ยกเลิก</button>
+        <button id="confirm-add-bank-btn" class="btn-primary income" type="button">เพิ่ม Bank</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rename Bank Modal -->
+  <div id="rename-bank-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>✏️ เปลี่ยนชื่อ Bank</h3>
+        <p>ระบุชื่อใหม่สำหรับบัญชีนี้</p>
+      </div>
+      <div class="modal-body" style="display: flex; flex-direction: column; gap: 12px;">
+        <input type="hidden" id="rename-bank-target-id">
+        <div class="input-group">
+          <label for="rename-bank-name-input" class="input-label">ชื่อ Bank ใหม่</label>
+          <input type="text" id="rename-bank-name-input" class="input-field" placeholder="เช่น SCB, KBank" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="cancel-rename-bank-btn" class="btn-secondary" type="button">ยกเลิก</button>
+        <button id="confirm-rename-bank-btn" class="btn-primary income" type="button">บันทึกชื่อใหม่</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Bank Modal -->
+  <div id="delete-bank-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 style="color: var(--expense-color);">🗑️ ลบบัญชี Bank</h3>
+        <p id="delete-bank-modal-msg">คุณแน่ใจหรือไม่ว่าต้องการลบบัญชีนี้? ข้อมูลรายการทั้งหมดในบัญชีนี้จะถูกลบออกจาก Cloud อย่างถาวร</p>
+      </div>
+      <input type="hidden" id="delete-bank-target-id">
+      <div class="modal-actions">
+        <button id="cancel-delete-bank-btn" class="btn-secondary" type="button">ยกเลิก</button>
+        <button id="confirm-delete-bank-btn" class="btn-danger" type="button">ยืนยันการลบ</button>
       </div>
     </div>
   </div>

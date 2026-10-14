@@ -15,13 +15,29 @@ const firebaseConfig = {
   measurementId: "G-TLWEVVFGDP"
 };
 
-const ACCOUNTS = {
-  'account_1': { id: 'account_1', name: '🏦 Bank1' },
-  'account_2': { id: 'account_2', name: '🏦 Bank2' }
-};
+let accounts = [];
+try {
+  accounts = JSON.parse(localStorage.getItem('tracker_accounts_list')) || [];
+} catch (e) {
+  accounts = [];
+}
+if (!Array.isArray(accounts) || accounts.length === 0) {
+  accounts = [
+    { id: 'account_1', name: 'Bank1' },
+    { id: 'account_2', name: 'Bank2' }
+  ];
+}
+
+function getAccountName(accId) {
+  const acc = accounts.find(a => a.id === accId);
+  return acc ? acc.name : accId;
+}
 
 let db = null;
 let currentAccountId = localStorage.getItem('tracker_currentAccountId') || 'account_1';
+if (!accounts.some(a => a.id === currentAccountId)) {
+  currentAccountId = accounts[0].id;
+}
 let unsubscribeFirestore = null;
 let isFirebaseConnected = false;
 
@@ -44,9 +60,29 @@ const ITEMS_PER_PAGE = 11;
 let currentDailyPage = 1;
 const DAILY_ITEMS_PER_PAGE = 5;
 
-// DOM Elements
-const sidebarAcc1 = document.getElementById('sidebar-acc-1');
-const sidebarAcc2 = document.getElementById('sidebar-acc-2');
+// DOM Elements - Bank Management
+const sidebarBanksList = document.getElementById('sidebar-banks-list');
+const addBankBtn = document.getElementById('add-bank-btn');
+
+// Add Bank Modal Elements
+const addBankModal = document.getElementById('add-bank-modal');
+const addBankNameInput = document.getElementById('add-bank-name-input');
+const cancelAddBankBtn = document.getElementById('cancel-add-bank-btn');
+const confirmAddBankBtn = document.getElementById('confirm-add-bank-btn');
+
+// Rename Bank Modal Elements
+const renameBankModal = document.getElementById('rename-bank-modal');
+const renameBankTargetId = document.getElementById('rename-bank-target-id');
+const renameBankNameInput = document.getElementById('rename-bank-name-input');
+const cancelRenameBankBtn = document.getElementById('cancel-rename-bank-btn');
+const confirmRenameBankBtn = document.getElementById('confirm-rename-bank-btn');
+
+// Delete Bank Modal Elements
+const deleteBankModal = document.getElementById('delete-bank-modal');
+const deleteBankTargetId = document.getElementById('delete-bank-target-id');
+const deleteBankModalMsg = document.getElementById('delete-bank-modal-msg');
+const cancelDeleteBankBtn = document.getElementById('cancel-delete-bank-btn');
+const confirmDeleteBankBtn = document.getElementById('confirm-delete-bank-btn');
 const dateDisplay = document.getElementById('current-date');
 const monthFilterSelect = document.getElementById('month-filter-select');
 const grandTotalList = document.getElementById('grand-total-list');
@@ -158,7 +194,7 @@ let localLastClearedAt = 0;
 
 function updateCloudStatusUI(status, message) {
   if (!sheetsStatusDot || !cloudStatus) return;
-  const accName = ACCOUNTS[currentAccountId]?.name || currentAccountId;
+  const accName = getAccountName(currentAccountId);
   if (status === 'online') {
     sheetsStatusDot.className = "status-dot online";
     cloudStatus.textContent = message || `Synced to Cloud (${accName})`;
@@ -224,11 +260,68 @@ function saveData() {
   localStorage.setItem('tracker_currentAccountId', currentAccountId);
 }
 
+function renderBanksSidebar() {
+  const listEl = document.getElementById('sidebar-banks-list') || sidebarBanksList;
+  if (!listEl) return;
+
+  listEl.innerHTML = '';
+  accounts.forEach((acc) => {
+    const isActive = acc.id === currentAccountId;
+    const row = document.createElement('div');
+    row.className = `bank-item-row ${isActive ? 'active' : ''}`;
+    row.dataset.accountId = acc.id;
+
+    // Bank switch button
+    const switchBtn = document.createElement('button');
+    switchBtn.type = 'button';
+    switchBtn.className = 'bank-item-btn';
+    switchBtn.title = `สลับไปที่ ${acc.name}`;
+    switchBtn.innerHTML = `<span class="icon">🏦</span><span class="bank-name-text"></span>`;
+    const nameSpan = switchBtn.querySelector('.bank-name-text');
+    if (nameSpan) nameSpan.textContent = acc.name;
+    switchBtn.addEventListener('click', () => {
+      closeMobileSidebar();
+      switchAccount(acc.id);
+    });
+
+    // Actions container
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'bank-item-actions';
+
+    // Rename button
+    const renameBtn = document.createElement('button');
+    renameBtn.type = 'button';
+    renameBtn.className = 'bank-action-btn btn-rename';
+    renameBtn.title = `เปลี่ยนชื่อ ${acc.name}`;
+    renameBtn.innerHTML = `✏️`;
+    renameBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openRenameBankModal(acc.id, acc.name);
+    });
+    actionsDiv.appendChild(renameBtn);
+
+    // Delete button (only show if accounts.length > 1)
+    if (accounts.length > 1) {
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'bank-action-btn btn-delete';
+      deleteBtn.title = `ลบ ${acc.name}`;
+      deleteBtn.innerHTML = `🗑️`;
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openDeleteBankModal(acc.id, acc.name);
+      });
+      actionsDiv.appendChild(deleteBtn);
+    }
+
+    row.appendChild(switchBtn);
+    row.appendChild(actionsDiv);
+    listEl.appendChild(row);
+  });
+}
+
 function updateAccountUI() {
-  if (sidebarAcc1 && sidebarAcc2) {
-    sidebarAcc1.classList.toggle('active', currentAccountId === 'account_1');
-    sidebarAcc2.classList.toggle('active', currentAccountId === 'account_2');
-  }
+  renderBanksSidebar();
 }
 
 function switchAccount(newAccountId) {
@@ -236,14 +329,59 @@ function switchAccount(newAccountId) {
   currentAccountId = newAccountId;
   localStorage.setItem('tracker_currentAccountId', currentAccountId);
   
-  updateAccountUI();
+  renderBanksSidebar();
   loadData();
   currentPage = 1;
   currentDailyPage = 1;
   updateUI();
   
   listenToFirestore(currentAccountId);
-  showToast(`สลับไปที่ ${ACCOUNTS[newAccountId]?.name || newAccountId}`, "info");
+  showToast(`สลับไปที่ ${getAccountName(newAccountId)}`, "info");
+}
+
+let unsubscribeAccountsList = null;
+function listenToAccountsList() {
+  if (!db) return;
+  if (unsubscribeAccountsList) {
+    unsubscribeAccountsList();
+    unsubscribeAccountsList = null;
+  }
+
+  unsubscribeAccountsList = db.collection('trackers').doc('_accounts_list').onSnapshot((docSnapshot) => {
+    if (!docSnapshot.exists) {
+      saveAccountsListToFirestore();
+      return;
+    }
+
+    const data = docSnapshot.data();
+    if (data && Array.isArray(data.accounts) && data.accounts.length > 0) {
+      accounts = data.accounts;
+      localStorage.setItem('tracker_accounts_list', JSON.stringify(accounts));
+
+      if (!accounts.some(a => a.id === currentAccountId)) {
+        currentAccountId = accounts[0].id;
+        localStorage.setItem('tracker_currentAccountId', currentAccountId);
+        loadData();
+        listenToFirestore(currentAccountId);
+      }
+
+      renderBanksSidebar();
+      updateCloudStatusUI('online');
+    }
+  }, (error) => {
+    console.error("Firestore accounts list listen error:", error);
+  });
+}
+
+function saveAccountsListToFirestore() {
+  localStorage.setItem('tracker_accounts_list', JSON.stringify(accounts));
+  if (!db) return;
+  db.collection('trackers').doc('_accounts_list').set({
+    accounts: accounts,
+    updatedAt: Date.now()
+  }).catch(err => {
+    console.error("Error saving accounts list to Firestore:", err);
+  });
 }
 
 function initFirebase() {
@@ -267,6 +405,7 @@ function initFirebase() {
       }
     });
 
+    listenToAccountsList();
     listenToFirestore(currentAccountId);
   } catch (err) {
     console.error("Firebase init error:", err);
@@ -281,7 +420,7 @@ function listenToFirestore(accountId) {
     unsubscribeFirestore = null;
   }
 
-  updateCloudStatusUI('syncing', `Connecting to ${ACCOUNTS[accountId]?.name || accountId}...`);
+  updateCloudStatusUI('syncing', `Connecting to ${getAccountName(accountId)}...`);
 
   unsubscribeFirestore = db.collection('trackers').doc(accountId).onSnapshot((docSnapshot) => {
     isFirebaseConnected = true;
@@ -295,7 +434,7 @@ function listenToFirestore(accountId) {
     if (!docSnapshot.exists) {
       // Document does not exist yet on Firestore for this account (First time)
       saveToFirestore();
-      updateCloudStatusUI('online', `Synced: ${ACCOUNTS[accountId]?.name || accountId}`);
+      updateCloudStatusUI('online', `Synced: ${getAccountName(accountId)}`);
       return;
     }
 
@@ -309,7 +448,7 @@ function listenToFirestore(accountId) {
     initialBalances = cloudBalances;
     saveData();
     updateUI();
-    updateCloudStatusUI('online', `Synced: ${ACCOUNTS[accountId]?.name || accountId}`);
+    updateCloudStatusUI('online', `Synced: ${getAccountName(accountId)}`);
   }, (error) => {
     console.error("Firestore listen error:", error);
     isFirebaseConnected = false;
@@ -326,7 +465,7 @@ function saveToFirestore() {
   firestoreSaveTimeout = setTimeout(() => {
     const payload = {
       id: currentAccountId,
-      name: ACCOUNTS[currentAccountId]?.name || currentAccountId,
+      name: getAccountName(currentAccountId),
       initialBalances: initialBalances,
       transactions: transactions.filter(t => !t.isDummy),
       updatedAt: Date.now()
@@ -334,13 +473,152 @@ function saveToFirestore() {
 
     db.collection('trackers').doc(currentAccountId).set(payload)
       .then(() => {
-        updateCloudStatusUI('online', `Synced: ${ACCOUNTS[currentAccountId]?.name || currentAccountId}`);
+        updateCloudStatusUI('online', `Synced: ${getAccountName(currentAccountId)}`);
       })
       .catch(err => {
         console.error("Firestore save error:", err);
         updateCloudStatusUI('error', 'Cloud Sync Failed');
       });
   }, 250);
+}
+
+// Bank Management Handlers
+function openAddBankModal() {
+  if (addBankNameInput) addBankNameInput.value = '';
+  if (addBankModal) addBankModal.classList.remove('hidden');
+  if (addBankNameInput) addBankNameInput.focus();
+}
+
+function confirmAddBank() {
+  if (!addBankNameInput) return;
+  const rawName = addBankNameInput.value.trim();
+  if (!rawName) {
+    showToast("กรุณากรอกชื่อ Bank", "error");
+    addBankNameInput.focus();
+    return;
+  }
+
+  // Check duplicate (case-insensitive)
+  if (accounts.some(a => a.name.toLowerCase() === rawName.toLowerCase())) {
+    showToast("มีชื่อ Bank นี้อยู่แล้ว", "error");
+    addBankNameInput.focus();
+    return;
+  }
+
+  const newId = 'acc_' + Date.now();
+  const newAccount = { id: newId, name: rawName };
+  accounts.push(newAccount);
+  saveAccountsListToFirestore();
+
+  // Create document in Firestore
+  if (db) {
+    db.collection('trackers').doc(newId).set({
+      id: newId,
+      name: rawName,
+      initialBalances: { "THB": 0 },
+      transactions: [],
+      updatedAt: Date.now()
+    }).catch(console.error);
+  }
+
+  renderBanksSidebar();
+  if (addBankModal) addBankModal.classList.add('hidden');
+  showToast(`เพิ่ม Bank "${rawName}" เรียบร้อยแล้ว`, "success");
+  switchAccount(newId);
+}
+
+function openRenameBankModal(accId, currentName) {
+  if (!renameBankModal) return;
+  if (renameBankTargetId) renameBankTargetId.value = accId;
+  if (renameBankNameInput) {
+    renameBankNameInput.value = currentName || getAccountName(accId);
+  }
+  renameBankModal.classList.remove('hidden');
+  if (renameBankNameInput) {
+    renameBankNameInput.focus();
+    renameBankNameInput.select();
+  }
+}
+
+function confirmRenameBank() {
+  if (!renameBankTargetId || !renameBankNameInput) return;
+  const accId = renameBankTargetId.value;
+  const newName = renameBankNameInput.value.trim();
+
+  if (!newName) {
+    showToast("กรุณากรอกชื่อ Bank", "error");
+    renameBankNameInput.focus();
+    return;
+  }
+
+  const accIndex = accounts.findIndex(a => a.id === accId);
+  if (accIndex === -1) return;
+
+  const oldName = accounts[accIndex].name;
+  accounts[accIndex].name = newName;
+  saveAccountsListToFirestore();
+
+  if (db) {
+    db.collection('trackers').doc(accId).set({
+      name: newName,
+      updatedAt: Date.now()
+    }, { merge: true }).catch(console.error);
+  }
+
+  renderBanksSidebar();
+  updateCloudStatusUI('online');
+  if (renameBankModal) renameBankModal.classList.add('hidden');
+  showToast(`เปลี่ยนชื่อ "${oldName}" เป็น "${newName}" เรียบร้อยแล้ว`, "success");
+}
+
+function openDeleteBankModal(accId, accName) {
+  if (accounts.length <= 1) {
+    showToast("ไม่สามารถลบได้ ต้องมีอย่างน้อย 1 บัญชี", "error");
+    return;
+  }
+  if (!deleteBankModal) return;
+  if (deleteBankTargetId) deleteBankTargetId.value = accId;
+  const displayName = accName || getAccountName(accId);
+  if (deleteBankModalMsg) {
+    deleteBankModalMsg.textContent = `คุณแน่ใจหรือไม่ว่าต้องการลบบัญชี "${displayName}"? ข้อมูลรายการทั้งหมดในบัญชีนี้จะถูกลบออกจาก Cloud อย่างถาวร`;
+  }
+  deleteBankModal.classList.remove('hidden');
+}
+
+function confirmDeleteBank() {
+  if (accounts.length <= 1) {
+    showToast("ไม่สามารถลบได้ ต้องมีอย่างน้อย 1 บัญชี", "error");
+    if (deleteBankModal) deleteBankModal.classList.add('hidden');
+    return;
+  }
+
+  const accId = deleteBankTargetId ? deleteBankTargetId.value : null;
+  if (!accId) return;
+
+  const targetAcc = accounts.find(a => a.id === accId);
+  const targetName = targetAcc ? targetAcc.name : accId;
+
+  accounts = accounts.filter(a => a.id !== accId);
+  saveAccountsListToFirestore();
+
+  if (db) {
+    db.collection('trackers').doc(accId).delete().catch(console.error);
+  }
+
+  try {
+    ['initialBalances', 'transactions', 'lastLoginDate', 'deletedIds', 'lastClearedAt'].forEach(k => {
+      localStorage.removeItem(`tracker_${accId}_${k}`);
+    });
+  } catch (e) {}
+
+  if (deleteBankModal) deleteBankModal.classList.add('hidden');
+  showToast(`ลบบัญชี "${targetName}" เรียบร้อยแล้ว`, "info");
+
+  if (currentAccountId === accId) {
+    switchAccount(accounts[0].id);
+  } else {
+    renderBanksSidebar();
+  }
 }
 
 // Initialization
@@ -383,7 +661,7 @@ function clearAllData() {
   currentDailyPage = 1;
   updateUI();
   if (confirmClearModal) confirmClearModal.classList.add('hidden');
-  showToast(`ล้างข้อมูล ${ACCOUNTS[currentAccountId]?.name || 'บัญชีนี้'} เรียบร้อยแล้ว`, "info");
+  showToast(`ล้างข้อมูล ${getAccountName(currentAccountId)} เรียบร้อยแล้ว`, "info");
 }
 
 // Custom Toast Alerts
@@ -651,7 +929,7 @@ function updateUI() {
   const currentBalances = getBalances();
   
   if (isFirebaseConnected) {
-    updateCloudStatusUI('online', `Synced: ${ACCOUNTS[currentAccountId]?.name || currentAccountId}`);
+    updateCloudStatusUI('online', `Synced: ${getAccountName(currentAccountId)}`);
   } else {
     updateCloudStatusUI('offline', 'Saved to Local Storage');
   }
@@ -2178,6 +2456,42 @@ function setupEventListeners() {
       }
       return;
     }
+
+    // 6. Add Bank Modal
+    if (addBankModal && !addBankModal.classList.contains('hidden')) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        confirmAddBank();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        addBankModal.classList.add('hidden');
+      }
+      return;
+    }
+
+    // 7. Rename Bank Modal
+    if (renameBankModal && !renameBankModal.classList.contains('hidden')) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        confirmRenameBank();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        renameBankModal.classList.add('hidden');
+      }
+      return;
+    }
+
+    // 8. Delete Bank Modal
+    if (deleteBankModal && !deleteBankModal.classList.contains('hidden')) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        confirmDeleteBank();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        deleteBankModal.classList.add('hidden');
+      }
+      return;
+    }
   });
 
   // Table Pagination Events (Prev / Next)
@@ -2306,19 +2620,35 @@ function setupEventListeners() {
     }, 1500);
   });
 
-  // Multi-Account Switcher Events (Sidebar)
-  if (sidebarAcc1) {
-    sidebarAcc1.addEventListener('click', () => {
-      closeMobileSidebar();
-      switchAccount('account_1');
+  // Bank Management Modal Events
+  if (addBankBtn) {
+    addBankBtn.addEventListener('click', openAddBankModal);
+  }
+  if (cancelAddBankBtn) {
+    cancelAddBankBtn.addEventListener('click', () => {
+      if (addBankModal) addBankModal.classList.add('hidden');
     });
   }
+  if (confirmAddBankBtn) {
+    confirmAddBankBtn.addEventListener('click', confirmAddBank);
+  }
 
-  if (sidebarAcc2) {
-    sidebarAcc2.addEventListener('click', () => {
-      closeMobileSidebar();
-      switchAccount('account_2');
+  if (cancelRenameBankBtn) {
+    cancelRenameBankBtn.addEventListener('click', () => {
+      if (renameBankModal) renameBankModal.classList.add('hidden');
     });
+  }
+  if (confirmRenameBankBtn) {
+    confirmRenameBankBtn.addEventListener('click', confirmRenameBank);
+  }
+
+  if (cancelDeleteBankBtn) {
+    cancelDeleteBankBtn.addEventListener('click', () => {
+      if (deleteBankModal) deleteBankModal.classList.add('hidden');
+    });
+  }
+  if (confirmDeleteBankBtn) {
+    confirmDeleteBankBtn.addEventListener('click', confirmDeleteBank);
   }
 
   if (copyBtn) {
