@@ -13,6 +13,8 @@ let currentTab = "dashboard";
 let pendingDeleteIds = [];
 let selectedTxIds = new Set();
 let visiblePageTxIds = [];
+let isFetchingGoogleSheets = false;
+let lastSyncTimestamp = 0;
 
 // Pagination State (Tracker: 11 items/page, Daily Breakdown: 5 days/page)
 let currentPage = 1;
@@ -158,7 +160,10 @@ function init() {
   setupEventListeners();
   registerServiceWorker();
 
-  // Auto clock check every 1 minute
+  // Auto-sync with Google Sheets in background on startup
+  setTimeout(autoSyncGoogleSheets, 800);
+
+  // Auto clock check every 1 minute & periodic background sync
   setInterval(() => {
     renderDate();
     const todayStr = getTodayDateString();
@@ -166,6 +171,10 @@ function init() {
       if (dateInput) dateInput.value = todayStr;
       checkMissingDays();
       updateUI();
+    }
+    // Periodic silent sync if tab has been open and untouched for > 3 minutes
+    if (document.visibilityState === 'visible' && (Date.now() - lastSyncTimestamp > 180000)) {
+      autoSyncGoogleSheets();
     }
   }, 60000);
 }
@@ -360,6 +369,11 @@ function sendToGoogleSheets(data) {
 
     let completedChunks = 0;
     if (payloadTxs.length === 0) {
+      if (!data.forceEmpty) {
+        console.warn("Safety block: Aborted sync_chunk with 0 items to prevent accidental wipe of Google Sheets.");
+        updateCloudStatusUI('online', 'Synced to Google Sheets');
+        return;
+      }
       const params = new URLSearchParams({
         action: 'sync_chunk',
         is_first: '1',
@@ -1392,15 +1406,21 @@ function saveSheetsUrl() {
   }
 }
 
-// 📥 Import Data from Google Sheets
-function importFromGoogleSheets() {
-  let urlToUse = (sheetsUrlInput.value.trim() || googleSheetUrl).trim();
+// 📥 Fetch / Import Data from Google Sheets (Auto & Manual)
+function fetchGoogleSheetsData(options = {}) {
+  const isSilent = options.silent === true;
+
+  if (isFetchingGoogleSheets) return;
+
+  let urlToUse = (sheetsUrlInput ? sheetsUrlInput.value.trim() : '') || googleSheetUrl;
   if (urlToUse && urlToUse.includes("script.googleusercontent.com")) {
     urlToUse = "https://script.google.com/macros/s/AKfycbysGA3P0rbqYxe04XHUKp87Fb6Yw4bCxGEIo_BylgM2s3OsaBy7afLzUemLUgR6CEDmdQ/exec";
     if (sheetsUrlInput) sheetsUrlInput.value = urlToUse;
   }
   if (!urlToUse || !urlToUse.includes("script.google.com")) {
-    showToast("กรุณากรอก Web App URL จาก Apps Script ให้ถูกต้องก่อนกด Import ครับ", "error");
+    if (!isSilent) {
+      showToast("กรุณากรอก Web App URL จาก Apps Script ให้ถูกต้องก่อนกด Import ครับ", "error");
+    }
     return;
   }
 
@@ -1415,15 +1435,28 @@ function importFromGoogleSheets() {
   googleSheetUrl = urlToUse;
   saveData();
 
+  isFetchingGoogleSheets = true;
+
   // Set Loading UI
-  if (importSheetsBtn) {
+  if (!isSilent && importSheetsBtn) {
     importSheetsBtn.disabled = true;
     importSheetsBtn.innerHTML = `<span class="spinner"></span> กำลัง Import...`;
   }
+  updateCloudStatusUI('syncing', 'Syncing to Google Sheets...');
+
+  const cleanup = () => {
+    isFetchingGoogleSheets = false;
+    if (importSheetsBtn) {
+      importSheetsBtn.disabled = false;
+      importSheetsBtn.innerHTML = `<span>📥 Import จาก Sheets</span>`;
+    }
+  };
 
   const handleImportedData = (rawList) => {
+    cleanup();
     if (!Array.isArray(rawList) || rawList.length === 0) {
-      showToast("ไม่พบรายการข้อมูลใน Google Sheets ครับ", "info");
+      if (!isSilent) showToast("ไม่พบรายการข้อมูลใน Google Sheets ครับ", "info");
+      updateCloudStatusUI('online', 'Synced to Google Sheets');
       return;
     }
 
@@ -1435,19 +1468,38 @@ function importFromGoogleSheets() {
       const curr = (item.currency || 'THB').toUpperCase();
       const tag = item.tag || item.description || '';
       const dateStr = item.date || getTodayDateString();
-      const timeStr = item.time || '';
+      const timeStr = String(item.time || '');
 
       let parsedTimestamp = Date.now() - (rawList.length - index) * 1000;
       if (timeStr) {
-        const tryDate = new Date(`${dateStr} ${timeStr}`);
-        if (!isNaN(tryDate.getTime())) parsedTimestamp = tryDate.getTime();
+        const timeMatch = timeStr.match(/(\d{1,2}):(\d{2}):(\d{2})/);
+        if (timeMatch) {
+          const tryDate = new Date(`${dateStr}T${timeMatch[0]}`);
+          if (!isNaN(tryDate.getTime())) parsedTimestamp = tryDate.getTime();
+        } else {
+          const tryDate = new Date(`${dateStr} ${timeStr}`);
+          if (!isNaN(tryDate.getTime())) parsedTimestamp = tryDate.getTime();
+        }
       } else {
         const tryDate = new Date(dateStr);
         if (!isNaN(tryDate.getTime())) parsedTimestamp = tryDate.getTime() + (index * 60000);
       }
 
+      // Check if item exists locally to preserve stable ID
+      let matchedId = null;
+      const existingMatch = transactions.find(t => 
+        t.date === dateStr &&
+        t.type === type &&
+        Math.abs(t.amount - amt) < 0.001 &&
+        t.currency === curr &&
+        (t.tag || '').trim() === tag.trim()
+      );
+      if (existingMatch) {
+        matchedId = existingMatch.id;
+      }
+
       importedTransactions.push({
-        id: generateId(),
+        id: matchedId || generateId(),
         date: dateStr,
         timestamp: parsedTimestamp,
         type: type,
@@ -1463,16 +1515,37 @@ function importFromGoogleSheets() {
     });
 
     if (importedTransactions.length > 0) {
-      transactions = importedTransactions;
+      // Smart Merge: Preserve very recent local transactions (created within 3 minutes) not yet in Sheet
+      const recentThreshold = Date.now() - (3 * 60 * 1000);
+      const pendingLocalTxs = transactions.filter(localTx => {
+        if (localTx.timestamp && localTx.timestamp > recentThreshold) {
+          const existsInSheet = importedTransactions.some(sheetTx => 
+            sheetTx.date === localTx.date &&
+            sheetTx.type === localTx.type &&
+            Math.abs(sheetTx.amount - localTx.amount) < 0.001 &&
+            sheetTx.currency === localTx.currency &&
+            (sheetTx.tag || '').trim() === (localTx.tag || '').trim()
+          );
+          return !existsInSheet;
+        }
+        return false;
+      });
+
+      transactions = [...importedTransactions, ...pendingLocalTxs];
       localStorage.setItem('tracker_isSeeded', 'true');
       saveData();
       currentPage = 1;
       updateUI();
+      lastSyncTimestamp = Date.now();
+      updateCloudStatusUI('online', 'Synced to Google Sheets');
 
-      showToast(`นำเข้าข้อมูลครบถ้วน ${transactions.length} รายการจาก Google Sheets สำเร็จ!`, "success");
-      sheetsModal.classList.add('hidden');
+      if (!isSilent) {
+        showToast(`นำเข้าข้อมูลครบถ้วน ${transactions.length} รายการจาก Google Sheets สำเร็จ!`, "success");
+        if (sheetsModal) sheetsModal.classList.add('hidden');
+      }
     } else {
-      showToast("ไม่พบข้อมูลที่สามารถนำเข้าได้", "info");
+      if (!isSilent) showToast("ไม่พบข้อมูลที่สามารถนำเข้าได้", "info");
+      updateCloudStatusUI('online', 'Synced to Google Sheets');
     }
   };
 
@@ -1482,10 +1555,6 @@ function importFromGoogleSheets() {
 
   window[callbackName] = (data) => {
     completed = true;
-    if (importSheetsBtn) {
-      importSheetsBtn.disabled = false;
-      importSheetsBtn.innerHTML = `<span>📥 Import จาก Sheets</span>`;
-    }
     delete window[callbackName];
     if (scriptElem && scriptElem.parentNode) {
       scriptElem.parentNode.removeChild(scriptElem);
@@ -1494,7 +1563,11 @@ function importFromGoogleSheets() {
     if (data && data.status === 'success' && data.transactions) {
       handleImportedData(data.transactions);
     } else {
-      showToast("นำเข้าไม่สำเร็จ หรือยังไม่ได้อัปเดตโค้ด Apps Script ใหม่", "error");
+      cleanup();
+      updateCloudStatusUI('online', 'Synced to Google Sheets');
+      if (!isSilent) {
+        showToast("นำเข้าไม่สำเร็จ หรือยังไม่ได้อัปเดตโค้ด Apps Script ใหม่", "error");
+      }
     }
   };
 
@@ -1515,18 +1588,16 @@ function importFromGoogleSheets() {
           if (data && data.status === 'success' && data.transactions) {
             handleImportedData(data.transactions);
           } else {
-            showToast("ไม่สามารถดึงข้อมูลได้ โปรดตรวจสอบการอัปเดตโค้ด Apps Script ครับ", "error");
+            cleanup();
+            updateCloudStatusUI('online', 'Synced to Google Sheets');
+            if (!isSilent) showToast("ไม่สามารถดึงข้อมูลได้ โปรดตรวจสอบการอัปเดตโค้ด Apps Script ครับ", "error");
           }
         })
         .catch(err => {
+          cleanup();
+          updateCloudStatusUI('online', 'Saved to Local Storage');
           console.error("Import error:", err);
-          showToast("ไม่สามารถเชื่อมต่อ Apps Script ได้ กรุณาลองวิธี Direct Paste แทนครับ", "error");
-        })
-        .finally(() => {
-          if (importSheetsBtn) {
-            importSheetsBtn.disabled = false;
-            importSheetsBtn.innerHTML = `<span>📥 Import จาก Sheets</span>`;
-          }
+          if (!isSilent) showToast("ไม่สามารถเชื่อมต่อ Apps Script ได้ กรุณาลองวิธี Direct Paste แทนครับ", "error");
         });
     }
   };
@@ -1537,15 +1608,26 @@ function importFromGoogleSheets() {
   setTimeout(() => {
     if (!completed) {
       completed = true;
-      if (window[callbackName]) delete window[callbackName];
+      delete window[callbackName];
       if (scriptElem && scriptElem.parentNode) scriptElem.parentNode.removeChild(scriptElem);
-      if (importSheetsBtn) {
-        importSheetsBtn.disabled = false;
-        importSheetsBtn.innerHTML = `<span>📥 Import จาก Sheets</span>`;
+      cleanup();
+      updateCloudStatusUI('online', 'Synced to Google Sheets');
+      if (!isSilent) {
+        showToast("การเชื่อมต่อหมดเวลา โปรดตรวจสอบว่า Apps Script เผยแพร่เป็น 'Anyone' แล้วหรือไม่", "error");
       }
-      showToast("การเชื่อมต่อหมดเวลา โปรดตรวจสอบว่า Apps Script เผยแพร่เป็น 'Anyone' แล้วหรือไม่", "error");
     }
   }, 12000);
+}
+
+// Helper Wrappers for Auto & Manual Sync
+function autoSyncGoogleSheets() {
+  if (!navigator.onLine) return;
+  if (!googleSheetUrl || !googleSheetUrl.includes("script.google.com")) return;
+  fetchGoogleSheetsData({ silent: true, source: 'auto' });
+}
+
+function importFromGoogleSheets() {
+  fetchGoogleSheetsData({ silent: false, source: 'manual' });
 }
 
 // 📋 Import from Direct Paste (TSV / CSV / Text from Sheets)
@@ -2043,6 +2125,11 @@ function setupEventListeners() {
       showToast("กรุณาก๊อปปี้ Web App URL จาก Apps Script มาวางก่อนครับ", "error");
       return;
     }
+
+    if (transactions.length === 0) {
+      showToast("ไม่มีรายการในตารางให้ Sync ไป Sheets ครับ", "info");
+      return;
+    }
     
     // Loading State Feedback
     syncAllBtn.disabled = true;
@@ -2058,6 +2145,25 @@ function setupEventListeners() {
       syncAllBtn.innerHTML = `⚡ Sync ข้อมูลไป Sheets`;
       sheetsModal.classList.add('hidden');
     }, 1500);
+  });
+
+  // Auto-sync when user switches back to tab or focuses window
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      if (Date.now() - lastSyncTimestamp > 20000) {
+        autoSyncGoogleSheets();
+      }
+    }
+  });
+
+  window.addEventListener('focus', () => {
+    if (Date.now() - lastSyncTimestamp > 20000) {
+      autoSyncGoogleSheets();
+    }
+  });
+
+  window.addEventListener('online', () => {
+    autoSyncGoogleSheets();
   });
 
   if (copyBtn) {
