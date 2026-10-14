@@ -4,7 +4,28 @@ const THAI_MONTHS = [
   "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
 ];
 
-// State variables (100% Backward Compatible with localStorage schemas)
+// Firebase Configuration & Multi-Account State
+const firebaseConfig = {
+  apiKey: "AIzaSyDCoInbwxIUJcUDgCuotXpIXE1pn779Z7U",
+  authDomain: "mydailytracker-5d9b2.firebaseapp.com",
+  projectId: "mydailytracker-5d9b2",
+  storageBucket: "mydailytracker-5d9b2.firebasestorage.app",
+  messagingSenderId: "765420962900",
+  appId: "1:765420962900:web:07e41542cd3d5a3d8d99c1",
+  measurementId: "G-TLWEVVFGDP"
+};
+
+const ACCOUNTS = {
+  'account_1': { id: 'account_1', name: '👤 บัญชีของฉัน' },
+  'account_2': { id: 'account_2', name: '👥 บัญชีเพื่อน' }
+};
+
+let db = null;
+let currentAccountId = localStorage.getItem('tracker_currentAccountId') || 'account_1';
+let unsubscribeFirestore = null;
+let isFirebaseConnected = false;
+
+// State variables (Multi-Account isolated)
 let initialBalances = { "THB": 0 };
 let transactions = [];
 let lastLoginDate = null;
@@ -24,6 +45,9 @@ let currentDailyPage = 1;
 const DAILY_ITEMS_PER_PAGE = 5;
 
 // DOM Elements
+const accountSelect = document.getElementById('account-select');
+const sidebarAcc1 = document.getElementById('sidebar-acc-1');
+const sidebarAcc2 = document.getElementById('sidebar-acc-2');
 const dateDisplay = document.getElementById('current-date');
 const monthFilterSelect = document.getElementById('month-filter-select');
 const grandTotalList = document.getElementById('grand-total-list');
@@ -135,19 +159,188 @@ let localLastClearedAt = 0;
 
 function updateCloudStatusUI(status, message) {
   if (!sheetsStatusDot || !cloudStatus) return;
+  const accName = ACCOUNTS[currentAccountId]?.name || currentAccountId;
   if (status === 'online') {
     sheetsStatusDot.className = "status-dot online";
-    cloudStatus.textContent = message || "Synced to Google Sheets";
+    cloudStatus.textContent = message || `Synced to Cloud (${accName})`;
   } else if (status === 'syncing') {
     sheetsStatusDot.className = "status-dot syncing";
-    cloudStatus.textContent = message || "Syncing to Google Sheets...";
+    cloudStatus.textContent = message || "Syncing to Cloud...";
   } else if (status === 'error') {
     sheetsStatusDot.className = "status-dot error";
-    cloudStatus.textContent = message || "Sync Error";
+    cloudStatus.textContent = message || "Cloud Sync Error";
   } else {
     sheetsStatusDot.className = "status-dot offline";
     cloudStatus.textContent = message || "Saved to Local Storage";
   }
+}
+
+function getStorageKey(key) {
+  return `tracker_${currentAccountId}_${key}`;
+}
+
+function checkFreshStart() {
+  if (!localStorage.getItem('tracker_firebase_fresh_clean_v1')) {
+    // Clear legacy monolithic mock data for clean start
+    localStorage.removeItem('tracker_transactions');
+    localStorage.removeItem('tracker_initialBalances');
+    localStorage.removeItem('tracker_isSeeded');
+    localStorage.removeItem('tracker_deletedIds');
+    localStorage.removeItem('tracker_lastClearedAt');
+    localStorage.setItem('tracker_firebase_fresh_clean_v1', 'true');
+  }
+}
+
+function loadData() {
+  checkFreshStart();
+
+  const savedInitial = JSON.parse(localStorage.getItem(getStorageKey('initialBalances')));
+  if (savedInitial && Object.keys(savedInitial).length > 0) {
+    initialBalances = savedInitial;
+  } else {
+    initialBalances = { "THB": 0 };
+  }
+  
+  const savedTransactions = JSON.parse(localStorage.getItem(getStorageKey('transactions')));
+  transactions = savedTransactions || [];
+  lastLoginDate = localStorage.getItem(getStorageKey('lastLoginDate'));
+
+  try {
+    deletedIds = JSON.parse(localStorage.getItem(getStorageKey('deletedIds'))) || [];
+  } catch (e) {
+    deletedIds = [];
+  }
+  localLastClearedAt = parseInt(localStorage.getItem(getStorageKey('lastClearedAt')) || '0', 10);
+}
+
+function saveData() {
+  localStorage.setItem(getStorageKey('initialBalances'), JSON.stringify(initialBalances));
+  localStorage.setItem(getStorageKey('transactions'), JSON.stringify(transactions));
+  localStorage.setItem(getStorageKey('lastLoginDate'), getTodayDateString());
+  localStorage.setItem(getStorageKey('deletedIds'), JSON.stringify(deletedIds.slice(-300)));
+  localStorage.setItem('tracker_currentAccountId', currentAccountId);
+}
+
+function updateAccountUI() {
+  if (accountSelect) {
+    accountSelect.value = currentAccountId;
+  }
+  if (sidebarAcc1 && sidebarAcc2) {
+    sidebarAcc1.classList.toggle('active', currentAccountId === 'account_1');
+    sidebarAcc2.classList.toggle('active', currentAccountId === 'account_2');
+  }
+}
+
+function switchAccount(newAccountId) {
+  if (newAccountId === currentAccountId) return;
+  currentAccountId = newAccountId;
+  localStorage.setItem('tracker_currentAccountId', currentAccountId);
+  
+  updateAccountUI();
+  loadData();
+  currentPage = 1;
+  currentDailyPage = 1;
+  updateUI();
+  
+  listenToFirestore(currentAccountId);
+  showToast(`สลับไปที่ ${ACCOUNTS[newAccountId]?.name || newAccountId}`, "info");
+}
+
+function initFirebase() {
+  if (typeof firebase === 'undefined') {
+    console.warn("Firebase SDK not loaded, using local storage");
+    updateCloudStatusUI('offline', 'Saved to Local Storage');
+    return;
+  }
+
+  try {
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    db = firebase.firestore();
+
+    db.enablePersistence({ synchronizeTabs: true }).catch(err => {
+      if (err.code === 'failed-precondition') {
+        console.warn('Firestore persistence warning: Multiple tabs open');
+      } else if (err.code === 'unimplemented') {
+        console.warn('Firestore persistence not supported in this browser');
+      }
+    });
+
+    listenToFirestore(currentAccountId);
+  } catch (err) {
+    console.error("Firebase init error:", err);
+    updateCloudStatusUI('offline', 'Firebase Error');
+  }
+}
+
+function listenToFirestore(accountId) {
+  if (!db) return;
+  if (unsubscribeFirestore) {
+    unsubscribeFirestore();
+    unsubscribeFirestore = null;
+  }
+
+  updateCloudStatusUI('syncing', `Connecting to ${ACCOUNTS[accountId]?.name || accountId}...`);
+
+  unsubscribeFirestore = db.collection('trackers').doc(accountId).onSnapshot((docSnapshot) => {
+    isFirebaseConnected = true;
+
+    // Ignore local uncommitted writes to prevent echoing
+    if (docSnapshot.metadata && docSnapshot.metadata.hasPendingWrites) {
+      updateCloudStatusUI('syncing', 'Syncing to Cloud...');
+      return;
+    }
+
+    if (!docSnapshot.exists) {
+      // Document does not exist yet on Firestore for this account (First time)
+      saveToFirestore();
+      updateCloudStatusUI('online', `Synced: ${ACCOUNTS[accountId]?.name || accountId}`);
+      return;
+    }
+
+    const cloudData = docSnapshot.data();
+    if (!cloudData) return;
+
+    const cloudTransactions = Array.isArray(cloudData.transactions) ? cloudData.transactions : [];
+    const cloudBalances = cloudData.initialBalances || { "THB": 0 };
+
+    transactions = cloudTransactions;
+    initialBalances = cloudBalances;
+    saveData();
+    updateUI();
+    updateCloudStatusUI('online', `Synced: ${ACCOUNTS[accountId]?.name || accountId}`);
+  }, (error) => {
+    console.error("Firestore listen error:", error);
+    isFirebaseConnected = false;
+    updateCloudStatusUI('error', 'Cloud Permission Error');
+  });
+}
+
+let firestoreSaveTimeout = null;
+function saveToFirestore() {
+  if (!db) return;
+  updateCloudStatusUI('syncing', 'Syncing to Cloud...');
+
+  clearTimeout(firestoreSaveTimeout);
+  firestoreSaveTimeout = setTimeout(() => {
+    const payload = {
+      id: currentAccountId,
+      name: ACCOUNTS[currentAccountId]?.name || currentAccountId,
+      initialBalances: initialBalances,
+      transactions: transactions.filter(t => !t.isDummy),
+      updatedAt: Date.now()
+    };
+
+    db.collection('trackers').doc(currentAccountId).set(payload)
+      .then(() => {
+        updateCloudStatusUI('online', `Synced: ${ACCOUNTS[currentAccountId]?.name || currentAccountId}`);
+      })
+      .catch(err => {
+        console.error("Firestore save error:", err);
+        updateCloudStatusUI('error', 'Cloud Sync Failed');
+      });
+  }, 250);
 }
 
 // Initialization
@@ -156,14 +349,13 @@ function init() {
   checkMissingDays();
   renderDate();
   if (dateInput) dateInput.value = getTodayDateString();
+  updateAccountUI();
   updateUI();
   setupEventListeners();
   registerServiceWorker();
+  initFirebase();
 
-  // Auto-sync with Google Sheets in background on startup
-  setTimeout(autoSyncGoogleSheets, 800);
-
-  // Auto clock check every 1 minute & periodic background sync
+  // Auto clock check every 1 minute
   setInterval(() => {
     renderDate();
     const todayStr = getTodayDateString();
@@ -171,10 +363,6 @@ function init() {
       if (dateInput) dateInput.value = todayStr;
       checkMissingDays();
       updateUI();
-    }
-    // Periodic silent sync if tab has been open and untouched for > 3 minutes
-    if (document.visibilityState === 'visible' && (Date.now() - lastSyncTimestamp > 180000)) {
-      autoSyncGoogleSheets();
     }
   }, 60000);
 }
@@ -184,47 +372,18 @@ function clearAllData() {
   initialBalances = { "THB": 0 };
   deletedIds = [];
   localLastClearedAt = Date.now();
-  localStorage.removeItem('tracker_transactions');
-  localStorage.removeItem('tracker_initialBalances');
-  localStorage.removeItem('tracker_lastLoginDate');
-  localStorage.removeItem('tracker_deletedIds');
-  localStorage.setItem('tracker_lastClearedAt', String(localLastClearedAt));
-  localStorage.setItem('tracker_isSeeded', 'true');
+  localStorage.removeItem(getStorageKey('transactions'));
+  localStorage.removeItem(getStorageKey('initialBalances'));
+  localStorage.removeItem(getStorageKey('lastLoginDate'));
+  localStorage.removeItem(getStorageKey('deletedIds'));
+  localStorage.setItem(getStorageKey('lastClearedAt'), String(localLastClearedAt));
   saveData();
+  saveToFirestore();
   currentPage = 1;
   currentDailyPage = 1;
   updateUI();
   if (confirmClearModal) confirmClearModal.classList.add('hidden');
-  showToast("ล้างข้อมูลทั้งหมดเรียบร้อยแล้ว", "info");
-}
-
-function loadData() {
-  const savedInitial = JSON.parse(localStorage.getItem('tracker_initialBalances'));
-  if (savedInitial && Object.keys(savedInitial).length > 0) {
-    initialBalances = savedInitial;
-  } else {
-    initialBalances = { "THB": 0 };
-  }
-  
-  const savedTransactions = JSON.parse(localStorage.getItem('tracker_transactions'));
-  transactions = savedTransactions || [];
-  lastLoginDate = localStorage.getItem('tracker_lastLoginDate');
-  googleSheetUrl = localStorage.getItem('tracker_googleSheetUrl') || "https://script.google.com/macros/s/AKfycbysGA3P0rbqYxe04XHUKp87Fb6Yw4bCxGEIo_BylgM2s3OsaBy7afLzUemLUgR6CEDmdQ/exec";
-
-  try {
-    deletedIds = JSON.parse(localStorage.getItem('tracker_deletedIds')) || [];
-  } catch (e) {
-    deletedIds = [];
-  }
-  localLastClearedAt = parseInt(localStorage.getItem('tracker_lastClearedAt') || '0', 10);
-}
-
-function saveData() {
-  localStorage.setItem('tracker_initialBalances', JSON.stringify(initialBalances));
-  localStorage.setItem('tracker_transactions', JSON.stringify(transactions));
-  localStorage.setItem('tracker_lastLoginDate', getTodayDateString());
-  localStorage.setItem('tracker_googleSheetUrl', googleSheetUrl);
-  localStorage.setItem('tracker_deletedIds', JSON.stringify(deletedIds.slice(-300)));
+  showToast(`ล้างข้อมูล ${ACCOUNTS[currentAccountId]?.name || 'บัญชีนี้'} เรียบร้อยแล้ว`, "info");
 }
 
 // Custom Toast Alerts
@@ -491,8 +650,10 @@ function updateCurrencyDropdown() {
 function updateUI() {
   const currentBalances = getBalances();
   
-  if (googleSheetUrl && googleSheetUrl.includes("script.google.com")) {
-    updateCloudStatusUI('online', 'Synced to Google Sheets');
+  if (isFirebaseConnected) {
+    updateCloudStatusUI('online', `Synced: ${ACCOUNTS[currentAccountId]?.name || currentAccountId}`);
+  } else if (googleSheetUrl && googleSheetUrl.includes("script.google.com")) {
+    updateCloudStatusUI('online', 'Connected to Cloud');
   } else {
     updateCloudStatusUI('offline', 'Saved to Local Storage');
   }
@@ -971,7 +1132,10 @@ function handleTransaction(type) {
   currentPage = 1;
   updateUI();
   
-  sendToGoogleSheets({ action: 'add', transaction: tx });
+  saveToFirestore();
+  if (googleSheetUrl && googleSheetUrl.includes("script.google.com")) {
+    sendToGoogleSheets({ action: 'add', transaction: tx });
+  }
   showToast(`บันทึก ${type === 'income' ? 'รายรับ' : 'รายจ่าย'} ${formatCurrency(amount)} ${currStr} แล้ว`, "success");
   
   amountInput.value = '';
@@ -1022,7 +1186,10 @@ function confirmDeleteTransaction() {
   saveData();
   updateUI();
   
-  sendToGoogleSheets({ action: 'sync_all', transactions: transactions });
+  saveToFirestore();
+  if (googleSheetUrl && googleSheetUrl.includes("script.google.com")) {
+    sendToGoogleSheets({ action: 'sync_all', transactions: transactions });
+  }
   showToast(count > 1 ? `ลบ ${count} รายการที่เลือกเรียบร้อยแล้ว` : "ลบรายการเรียบร้อยแล้ว", "info");
 
   confirmDeleteModal.classList.add('hidden');
@@ -1064,7 +1231,10 @@ function saveEditTransaction() {
   updateUI();
   editTxModal.classList.add('hidden');
   
-  sendToGoogleSheets({ action: 'sync_all', transactions: transactions });
+  saveToFirestore();
+  if (googleSheetUrl && googleSheetUrl.includes("script.google.com")) {
+    sendToGoogleSheets({ action: 'sync_all', transactions: transactions });
+  }
   showToast("แก้ไขรายการเรียบร้อยแล้ว", "success");
 }
 
@@ -1114,6 +1284,7 @@ function saveBalances() {
   initialBalances = newInitBals;
   saveData();
   updateUI();
+  saveToFirestore();
   balanceModal.classList.add('hidden');
   showToast("อัปเดตเงินตั้งต้นในบัญชีเรียบร้อยแล้ว", "success");
 }
@@ -2146,6 +2317,27 @@ function setupEventListeners() {
       sheetsModal.classList.add('hidden');
     }, 1500);
   });
+
+  // Multi-Account Switcher Events
+  if (accountSelect) {
+    accountSelect.addEventListener('change', (e) => {
+      switchAccount(e.target.value);
+    });
+  }
+
+  if (sidebarAcc1) {
+    sidebarAcc1.addEventListener('click', () => {
+      closeMobileSidebar();
+      switchAccount('account_1');
+    });
+  }
+
+  if (sidebarAcc2) {
+    sidebarAcc2.addEventListener('click', () => {
+      closeMobileSidebar();
+      switchAccount('account_2');
+    });
+  }
 
   // Auto-sync when user switches back to tab or focuses window
   document.addEventListener('visibilitychange', () => {

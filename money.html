@@ -34,6 +34,19 @@
         </div>
       </div>
 
+      <!-- Active Account Switcher -->
+      <div class="sidebar-nav-group">
+        <div class="sidebar-label">ACTIVE ACCOUNT</div>
+        <button id="sidebar-acc-1" class="sidebar-nav-btn active">
+          <span class="icon">👤</span>
+          <span>บัญชีของฉัน</span>
+        </button>
+        <button id="sidebar-acc-2" class="sidebar-nav-btn">
+          <span class="icon">👥</span>
+          <span>บัญชีเพื่อน</span>
+        </button>
+      </div>
+
       <!-- Main Navigation Menu -->
       <div class="sidebar-nav-group">
         <div class="sidebar-label">MAIN MENU</div>
@@ -83,6 +96,14 @@
             </svg>
           </button>
           
+          <!-- Account Switcher Selector -->
+          <div class="account-select-wrapper">
+            <select id="account-select" class="account-select" aria-label="Select account">
+              <option value="account_1">👤 บัญชีของฉัน</option>
+              <option value="account_2">👥 บัญชีเพื่อน</option>
+            </select>
+          </div>
+
           <!-- Month & Year Filter Selector -->
           <div class="month-select-wrapper">
             <select id="month-filter-select" class="month-select" aria-label="Select month filter">
@@ -419,6 +440,9 @@
     </div>
   </div>
 
+  <!-- Firebase SDKs (Compat v10.8.0 for seamless Vanilla JS) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

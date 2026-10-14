@@ -211,6 +211,32 @@
   color: var(--text-primary);
 }
 
+/* Account Switcher Selector */
+.account-select {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color-strong);
+  color: #38bdf8;
+  font-family: inherit;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-sm);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  outline: none;
+  transition: var(--transition-fast);
+}
+
+.account-select:hover,
+.account-select:focus-visible {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+}
+
+.account-select option {
+  background: var(--panel-bg);
+  color: var(--text-primary);
+}
+
 /* 3. Quick Add Transaction Form Card */
 .add-transaction-card {
   background: var(--card-bg);

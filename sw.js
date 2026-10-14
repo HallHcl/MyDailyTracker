@@ -1,4 +1,4 @@
-const CACHE_NAME = 'daily-tracker-v6';
+const CACHE_NAME = 'daily-tracker-v7';
 const ASSETS = [
   './',
   './money.html',
@@ -30,6 +30,11 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
+  // Never intercept Firebase / Firestore network calls
+  if (e.request.url.includes('firebase') || e.request.url.includes('firestore') || e.request.url.includes('googleapis.com')) {
+    return;
+  }
+
   if (e.request.url.includes('script.js') || e.request.url.includes('money.html') || e.request.url.endsWith('/')) {
     e.respondWith(
       fetch(e.request)
