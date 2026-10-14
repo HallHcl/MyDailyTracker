@@ -1,11 +1,14 @@
-const CACHE_NAME = 'daily-tracker-v11';
+const CACHE_NAME = 'daily-tracker-v12';
 const ASSETS = [
   './',
   './money.html',
   './style.css',
   './script.js',
   './manifest.json',
-  './favicon.svg'
+  './favicon.svg',
+  './css/theme.css',
+  './css/components.css',
+  './css/layout.css'
 ];
 
 self.addEventListener('install', (e) => {
@@ -35,7 +38,13 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  if (e.request.url.includes('script.js') || e.request.url.includes('money.html') || e.request.url.endsWith('/')) {
+  // Network-First for HTML, JS, and CSS to guarantee latest updates
+  if (
+    e.request.url.includes('script.js') || 
+    e.request.url.includes('.css') || 
+    e.request.url.includes('money.html') || 
+    e.request.url.endsWith('/')
+  ) {
     e.respondWith(
       fetch(e.request)
         .then((response) => {

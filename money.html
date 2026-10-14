@@ -6,7 +6,7 @@
   <title>My Daily Tracker - Financial Dashboard</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="apple-touch-icon" href="favicon.svg">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20261014_2">
   <link rel="manifest" href="manifest.json">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <meta name="theme-color" content="#10B981">
@@ -179,9 +179,8 @@
             <div class="dash-card">
               <div class="dash-card-header-row">
                 <h2 class="dash-card-title">📊 สรุปย้อนหลัง 6 เดือน</h2>
-                <div class="chart-currency-select-wrapper">
-                  <label for="chart-currency-select" class="chart-curr-label">สกุลเงิน:</label>
-                  <select id="chart-currency-select" class="chart-currency-select" aria-label="Select currency for chart"></select>
+                <div id="chart-currency-pills-container" class="chart-currency-pills-container">
+                  <!-- Injected dynamically: [ THB ] [ WIP ] -->
                 </div>
               </div>
               <div id="dash-charts-container" class="charts-list"></div>
@@ -496,6 +495,6 @@
   <!-- Firebase SDKs (Compat v10.8.0 for seamless Vanilla JS) -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-  <script src="script.js"></script>
+  <script src="script.js?v=20261014_2"></script>
 </body>
 </html>

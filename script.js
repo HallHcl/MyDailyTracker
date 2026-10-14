@@ -125,7 +125,7 @@ const dashBalances = document.getElementById('dash-balances');
 const dashDailyBreakdown = document.getElementById('dash-daily-breakdown');
 const dashTodayStats = document.getElementById('dash-today-stats');
 const dashChartsContainer = document.getElementById('dash-charts-container');
-const chartCurrencySelect = document.getElementById('chart-currency-select');
+const chartCurrencyPillsContainer = document.getElementById('chart-currency-pills-container');
 const dashActivityStats = document.getElementById('dash-activity-stats');
 const toastContainer = document.getElementById('toast-container');
 
@@ -1175,21 +1175,23 @@ function renderMonthlyComparisonChart(allCurrencies) {
     chartSelectedCurrency = currList[0];
   }
 
-  // 2. Populate currency select dropdown
-  if (chartCurrencySelect) {
-    chartCurrencySelect.innerHTML = '';
+  // 2. Populate currency pill buttons
+  const pillsContainer = document.getElementById('chart-currency-pills-container') || chartCurrencyPillsContainer;
+  if (pillsContainer) {
+    pillsContainer.innerHTML = '';
     currList.forEach(curr => {
-      const opt = document.createElement('option');
-      opt.value = curr;
-      opt.textContent = curr;
-      if (curr === chartSelectedCurrency) opt.selected = true;
-      chartCurrencySelect.appendChild(opt);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `chart-curr-pill ${curr === chartSelectedCurrency ? 'active' : ''}`;
+      btn.textContent = curr;
+      btn.title = `สลับดูกราฟสกุลเงิน ${curr}`;
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        chartSelectedCurrency = curr;
+        renderMonthlyComparisonChart(allCurrencies);
+      });
+      pillsContainer.appendChild(btn);
     });
-
-    chartCurrencySelect.onchange = (e) => {
-      chartSelectedCurrency = e.target.value;
-      renderMonthlyComparisonChart(allCurrencies);
-    };
   }
 
   // 3. Generate 6 months list (from 5 months ago up to current month)
